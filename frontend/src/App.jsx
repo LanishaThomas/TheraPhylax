@@ -1,52 +1,79 @@
-import { useEffect, useState } from "react";
-import "./App.css";
+import React from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "./contexts/AuthContext";
+import { PublicLayout } from "./components/layout/PublicLayout";
+import { AuthenticatedLayout } from "./components/layout/AuthenticatedLayout";
+import { ProtectedRoute } from "./components/routes/ProtectedRoute";
+import { RoleGuard } from "./components/routes/RoleGuard";
+
+import { LandingPage } from "./pages/LandingPage";
+import { LoginPage } from "./pages/LoginPage";
+import { RegisterPage } from "./pages/RegisterPage";
+import { VerifyEmailPage } from "./pages/VerifyEmailPage";
+import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
+import { RisksPage } from "./pages/RisksPage";
+
+import { DashboardPage } from "./pages/DashboardPage";
+import { NewReportPage } from "./pages/NewReportPage";
+import { ReportsPage } from "./pages/ReportsPage";
+import { ReportDetailsPage } from "./pages/ReportDetailsPage";
+import { AlertsPage } from "./pages/AlertsPage";
+import { ProfilePage } from "./pages/ProfilePage";
+import { ResponderDashboardPage } from "./pages/ResponderDashboardPage";
+import { AdminDashboardPage } from "./pages/AdminDashboardPage";
+import { NotFoundPage } from "./pages/NotFoundPage";
 
 function App() {
-  const [message, setMessage] = useState("Connecting to backend...");
-  const [status, setStatus] = useState("loading");
-
-  useEffect(() => {
-    fetch("http://127.0.0.1:8000/")
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("API request failed");
-        }
-        return response.json();
-      })
-      .then((data) => {
-        setMessage(data.message);
-        setStatus("connected");
-      })
-      .catch(() => {
-        setMessage("Could not connect to the backend.");
-        setStatus("error");
-      });
-  }, []);
-
   return (
-    <main className="app">
-      <div className="brand">TP</div>
-      <h1>TheraPhylax</h1>
-      <p className="subtitle">
-        Wildlife Conflict Prevention & Intelligence
-      </p>
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<PublicLayout />}>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/risks" element={<RisksPage />} />
+          </Route>
 
-      <section className="status-card">
-        <p>Backend connection</p>
-        <h2>
-          {status === "connected"
-            ? "Connected"
-            : status === "error"
-              ? "Connection failed"
-              : "Connecting..."}
-        </h2>
-        <p>{message}</p>
-      </section>
+          <Route
+            element={
+              <ProtectedRoute>
+                <AuthenticatedLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/reports/new" element={<NewReportPage />} />
+            <Route path="/reports" element={<ReportsPage />} />
+            <Route path="/reports/:id" element={<ReportDetailsPage />} />
+            <Route path="/alerts" element={<AlertsPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
 
-      <p className="footer">
-        Protecting wildlife. Supporting safer communities.
-      </p>
-    </main>
+            <Route
+              path="/responder"
+              element={
+                <RoleGuard allowedRoles={["Responder", "Admin"]}>
+                  <ResponderDashboardPage />
+                </RoleGuard>
+              }
+            />
+
+            <Route
+              path="/admin"
+              element={
+                <RoleGuard allowedRoles={["Admin"]}>
+                  <AdminDashboardPage />
+                </RoleGuard>
+              }
+            />
+          </Route>
+
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
 
