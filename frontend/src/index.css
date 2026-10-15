@@ -1,6 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Dancing+Script:wght@600;700&family=Playfair+Display:ital,wght@1,600;1,700&display=swap');
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700&display=swap');
-
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@500;600;700;800&family=Playfair+Display:ital,wght@0,600;1,600;1,700&family=Dancing+Script:wght@600;700&display=swap');
 :root {
   --deep-forest: #173D2D;
   --primary-green: #276749;
@@ -314,3 +312,38 @@ table.data-table tr:hover td {
   font-style: italic;
   color: var(--sage);
 }
+
+
+/* Harmonized Multi-Font System */
+.font-heading {
+  font-family: 'Outfit', sans-serif !important;
+}
+
+.font-serif-italic {
+  font-family: 'Playfair Display', serif !important;
+  font-style: italic !important;
+}
+
+.font-script {
+  font-family: 'Dancing Script', cursive !important;
+  font-weight: 700;
+}
+
+.hero-tagline-script {
+  font-family: 'Dancing Script', cursive !important;
+  color: #1E5E3A;
+  font-size: 1.1875rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+/* Leaflet map pin & container styles */
+.custom-leaflet-marker-pin {
+  background: transparent !important;
+  border: none !important;
+}
+
+.leaflet-container {
+  font-family: var(--font-body) !important;
+}
+

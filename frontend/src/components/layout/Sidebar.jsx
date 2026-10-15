@@ -5,16 +5,17 @@ import {
   LayoutDashboard,
   FilePlus,
   FileText,
-  Heart,
-  Info,
+  Radio,
+  MapPin,
+  Send,
   AlertTriangle,
   User,
   LogOut,
   ChevronRight,
-  Radio,
-  MapPin,
-  Send,
+  Newspaper,
+  Compass,
   Settings,
+  ShieldAlert,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { Badge } from "../ui/Badge";
@@ -30,35 +31,31 @@ export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
 
   const userRole = (role || "Citizen").toLowerCase();
 
-  // Define role-specific nav items (HELPLINES REMOVED FROM SIDEBAR)
+  // Define role-specific nav items (Forest Officers, Responders, Citizens, Admins)
   let navItems = [];
 
   if (userRole === "officer" || userRole === "responder") {
     navItems = [
       { label: "Officer Command", path: "/officer/dashboard", icon: Radio, badge: "Officer", color: "#34D399" },
-      { label: "Incident Triage", path: "/officer/incidents", icon: FileText, color: "#60A5FA" },
-      { label: "Targeted Geo-Alerts", path: "/officer/alerts", icon: AlertTriangle, color: "#FBBF24" },
+      { label: "Incident Triage", path: "/reports", icon: FileText, color: "#60A5FA" },
+      { label: "Public Safety Updates", path: "/updates", icon: Compass, color: "#34D399" },
+      { label: "Publish Safety Advisory", path: "/officer/updates/create", icon: Send, color: "#C084FC" },
+      { label: "Targeted Geo-Alerts", path: "/alerts", icon: AlertTriangle, color: "#FBBF24" },
       { label: "Create Geo-Alert", path: "/officer/alerts/create", icon: MapPin, color: "#F87171" },
-      { label: "Public Safety Notices", path: "/officer/updates", icon: Info, color: "#A7F3D0" },
-      { label: "Publish Community Notice", path: "/officer/updates/create", icon: Send, color: "#C084FC" },
-      { label: "NGO Rescue Partners", path: "/ngos", icon: Heart, color: "#F472B6" },
-      { label: "My Profile", path: "/profile", icon: User, color: "#9CA3AF" },
-    ];
-  } else if (userRole === "ngo") {
-    navItems = [
-      { label: "NGO Rescue Dashboard", path: "/ngo/dashboard", icon: Heart, badge: "NGO", color: "#F472B6" },
-      { label: "Rescue Requests Queue", path: "/ngo/requests", icon: FileText, color: "#60A5FA" },
-      { label: "NGO Profile & Services", path: "/ngo/profile", icon: Settings, color: "#34D399" },
-      { label: "Public Safety Updates", path: "/updates", icon: Info, color: "#FBBF24" },
+      { label: "Animal & Safety News", path: "/news", icon: Newspaper, color: "#FBBF24" },
       { label: "My Profile", path: "/profile", icon: User, color: "#9CA3AF" },
     ];
   } else if (userRole === "admin") {
     navItems = [
       { label: "Citizen Dashboard", path: "/dashboard", icon: LayoutDashboard, color: "#34D399" },
-      { label: "Officer Command Workspace", path: "/officer/dashboard", icon: Radio, badge: "Officer", color: "#FBBF24" },
-      { label: "NGO Rescue Workspace", path: "/ngo/dashboard", icon: Heart, badge: "NGO", color: "#F472B6" },
       { label: "Admin Console", path: "/admin", icon: Settings, badge: "Admin", color: "#C084FC" },
-      { label: "Report Incident", path: "/accidents/report", icon: FilePlus, color: "#F87171" },
+      { label: "Responder Command", path: "/responder", icon: Radio, badge: "Officer", color: "#FBBF24" },
+      { label: "Report Incident / Accident", path: "/accidents/report", icon: FilePlus, color: "#F87171" },
+      { label: "My Submitted Reports", path: "/accidents/my-reports", icon: FileText, color: "#60A5FA" },
+      { label: "Public Safety Updates", path: "/updates", icon: Compass, color: "#34D399" },
+      { label: "Publish Safety Notice", path: "/officer/updates/create", icon: Send, color: "#C084FC" },
+      { label: "Active Disaster Alerts", path: "/alerts", icon: AlertTriangle, color: "#FBBF24" },
+      { label: "Animal & Safety News", path: "/news", icon: Newspaper, color: "#FBBF24" },
       { label: "My Profile", path: "/profile", icon: User, color: "#9CA3AF" },
     ];
   } else {
@@ -67,9 +64,9 @@ export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
       { label: "Citizen Dashboard", path: "/dashboard", icon: LayoutDashboard, color: "#34D399" },
       { label: "Report Incident / Accident", path: "/accidents/report", icon: FilePlus, color: "#F87171" },
       { label: "My Submitted Reports", path: "/accidents/my-reports", icon: FileText, color: "#60A5FA" },
-      { label: "NGO Rescue Directory", path: "/ngos", icon: Heart, color: "#F472B6" },
-      { label: "Public Safety Updates", path: "/updates", icon: Info, color: "#A7F3D0" },
+      { label: "Public Safety Updates", path: "/updates", icon: Compass, color: "#34D399" },
       { label: "Active Disaster Alerts", path: "/alerts", icon: AlertTriangle, color: "#FBBF24" },
+      { label: "Animal & Safety News", path: "/news", icon: Newspaper, color: "#FBBF24" },
       { label: "My Profile", path: "/profile", icon: User, color: "#9CA3AF" },
     ];
   }
@@ -160,8 +157,8 @@ export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
               {user?.email}
             </p>
           </div>
-          <Badge variant={userRole === "admin" ? "critical" : userRole === "officer" || userRole === "responder" ? "high" : userRole === "ngo" ? "medium" : "pending"}>
-            {role}
+          <Badge variant={userRole === "admin" ? "critical" : userRole === "officer" || userRole === "responder" ? "high" : "pending"}>
+            {role || "Citizen"}
           </Badge>
         </div>
 

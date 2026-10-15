@@ -1,18 +1,16 @@
-import React, { useState } from "react";
+import React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Shield, Menu, X, LogIn, LayoutDashboard, Phone, Heart, Info } from "lucide-react";
+import { Shield, LogIn, LayoutDashboard } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { Button } from "../ui/Button";
 
 export const PublicNavbar = () => {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { isAuthenticated, user, role } = useAuth();
   const navigate = useNavigate();
 
   const getDashboardPath = () => {
     const r = (role || "").toLowerCase();
     if (r === "officer" || r === "responder") return "/officer/dashboard";
-    if (r === "ngo") return "/ngo/dashboard";
     if (r === "admin") return "/admin";
     return "/dashboard";
   };
@@ -38,7 +36,8 @@ export const PublicNavbar = () => {
           justifyContent: "space-between",
         }}
       >
-        <Link to="/" style={{ display: "flex", alignItems: "center", gap: "0.75rem", color: "#FFFFFF" }}>
+        {/* LOGO & BRAND */}
+        <Link to="/" style={{ display: "flex", alignItems: "center", gap: "0.75rem", color: "#FFFFFF", textDecoration: "none" }}>
           <div
             style={{
               backgroundColor: "var(--primary-green)",
@@ -61,28 +60,8 @@ export const PublicNavbar = () => {
           </div>
         </Link>
 
-        <nav style={{ display: "none", alignItems: "center", gap: "1.5rem" }} className="desktop-nav">
-          <Link to="/" style={{ color: "rgba(255,255,255,0.9)", fontWeight: 500, fontSize: "0.9375rem" }}>
-            Home
-          </Link>
-          <Link to="/accidents/report" style={{ color: "var(--sage)", fontWeight: 700, fontSize: "0.9375rem" }}>
-            Report Incident
-          </Link>
-          <Link to="/emergency" style={{ color: "#FCA5A5", fontWeight: 700, fontSize: "0.9375rem", display: "flex", alignItems: "center", gap: "0.25rem" }}>
-            <Phone size={14} /> Emergency Numbers
-          </Link>
-          <Link to="/ngos" style={{ color: "rgba(255,255,255,0.9)", fontWeight: 500, fontSize: "0.9375rem" }}>
-            NGO Rescue Directory
-          </Link>
-          <Link to="/updates" style={{ color: "rgba(255,255,255,0.9)", fontWeight: 500, fontSize: "0.9375rem" }}>
-            Community Updates
-          </Link>
-          <Link to="/risks" style={{ color: "rgba(255,255,255,0.9)", fontWeight: 500, fontSize: "0.9375rem" }}>
-            Risks
-          </Link>
-        </nav>
-
-        <div style={{ display: "none", alignItems: "center", gap: "0.875rem" }} className="desktop-nav">
+        {/* ONLY SEPARATE SIGN IN & SIGN UP BUTTONS */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.875rem" }}>
           {isAuthenticated ? (
             <Button
               variant="secondary"
@@ -94,94 +73,39 @@ export const PublicNavbar = () => {
             </Button>
           ) : (
             <>
-              <Link to="/login">
-                <Button variant="ghost" size="sm" icon={LogIn} style={{ color: "#FFFFFF" }}>
+              <Link to="/login" style={{ textDecoration: "none" }}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={LogIn}
+                  style={{
+                    color: "#FFFFFF",
+                    border: "1px solid rgba(255, 255, 255, 0.25)",
+                    borderRadius: "8px",
+                    fontWeight: 600,
+                  }}
+                >
                   Sign In
                 </Button>
               </Link>
-              <Link to="/register">
-                <Button variant="primary" size="sm">
-                  Register
+              <Link to="/register" style={{ textDecoration: "none" }}>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  style={{
+                    backgroundColor: "var(--primary-green)",
+                    borderColor: "var(--primary-green)",
+                    borderRadius: "8px",
+                    fontWeight: 700,
+                  }}
+                >
+                  Sign Up
                 </Button>
               </Link>
             </>
           )}
         </div>
-
-        <button
-          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          style={{
-            background: "none",
-            border: "none",
-            color: "#FFFFFF",
-            cursor: "pointer",
-            padding: "0.5rem",
-          }}
-          className="mobile-toggle"
-        >
-          {mobileMenuOpen ? <X size={26} /> : <Menu size={26} />}
-        </button>
       </div>
-
-      {mobileMenuOpen && (
-        <div
-          style={{
-            backgroundColor: "#123023",
-            padding: "1.25rem 1.5rem",
-            borderTop: "1px solid rgba(255,255,255,0.1)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "1rem",
-          }}
-        >
-          <Link to="/" onClick={() => setMobileMenuOpen(false)} style={{ color: "#FFFFFF", fontWeight: 500 }}>
-            Home
-          </Link>
-          <Link to="/accidents/report" onClick={() => setMobileMenuOpen(false)} style={{ color: "var(--sage)", fontWeight: 700 }}>
-            Report Incident / Accident
-          </Link>
-          <Link to="/emergency" onClick={() => setMobileMenuOpen(false)} style={{ color: "#FCA5A5", fontWeight: 700 }}>
-            Emergency Numbers (112, 108)
-          </Link>
-          <Link to="/ngos" onClick={() => setMobileMenuOpen(false)} style={{ color: "#FFFFFF", fontWeight: 500 }}>
-            NGO Rescue Directory
-          </Link>
-          <Link to="/updates" onClick={() => setMobileMenuOpen(false)} style={{ color: "#FFFFFF", fontWeight: 500 }}>
-            Community Safety Updates
-          </Link>
-          <Link to="/risks" onClick={() => setMobileMenuOpen(false)} style={{ color: "#FFFFFF", fontWeight: 500 }}>
-            Explore Risk Zones
-          </Link>
-
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.1)", paddingTop: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            {isAuthenticated ? (
-              <Button variant="secondary" onClick={() => { navigate(getDashboardPath()); setMobileMenuOpen(false); }}>
-                Go to Dashboard ({role})
-              </Button>
-            ) : (
-              <>
-                <Link to="/login" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="outline" style={{ width: "100%", color: "#FFFFFF", borderColor: "rgba(255,255,255,0.3)" }}>
-                    Sign In
-                  </Button>
-                </Link>
-                <Link to="/register" onClick={() => setMobileMenuOpen(false)}>
-                  <Button variant="primary" style={{ width: "100%" }}>
-                    Create Account
-                  </Button>
-                </Link>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      <style>{`
-        @media (min-width: 900px) {
-          .desktop-nav { display: flex !important; }
-          .mobile-toggle { display: none !important; }
-        }
-      `}</style>
     </header>
   );
 };

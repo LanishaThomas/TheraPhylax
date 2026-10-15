@@ -96,21 +96,20 @@ export const apiService = {
     return apiRequest("/emergency-contacts");
   },
 
-  // NGO Directory & Rescue Matching
-  getNgos: async () => {
-    return apiRequest("/ngos");
+  // Forest Officer Stations, Districts & Rapid Patrols
+  getForestDistricts: async () => {
+    return apiRequest("/forest/districts");
   },
-  getNgoMatches: async (location) => {
-    return apiRequest(`/ngos/matches${location ? `?location=${encodeURIComponent(location)}` : ""}`);
+  getForestStations: async (district = "") => {
+    const q = district ? `?district=${encodeURIComponent(district)}` : "";
+    return apiRequest(`/forest/stations${q}`);
   },
-  getNgoRequests: async () => {
-    return apiRequest("/ngo/requests");
+  getForestDispatches: async () => {
+    return apiRequest("/forest/dispatches");
   },
-  updateNgoRequestStatus: async (id, status, notes) => {
-    return apiRequest(`/ngo/requests/${id}/status`, {
-      method: "PATCH",
-      body: JSON.stringify({ status, notes }),
-    });
+  getMyReports: async (userEmail) => {
+    const q = userEmail ? `?user_email=${encodeURIComponent(userEmail)}` : "";
+    return apiRequest(`/reports${q}`);
   },
 
   // Stats & Risks

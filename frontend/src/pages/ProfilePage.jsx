@@ -1,5 +1,19 @@
-import React, { useState } from "react";
-import { User, Shield, LogOut, Save } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import {
+  User,
+  Shield,
+  LogOut,
+  Save,
+  MapPin,
+  Compass,
+  Search,
+  RefreshCw,
+  CheckCircle2,
+  AlertTriangle,
+  Radio,
+} from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { apiService } from "../services/api";
 import { Card } from "../components/ui/Card";
@@ -7,14 +21,393 @@ import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { AlertMessage } from "../components/ui/AlertMessage";
 
+// Create custom red teardrop pin with smooth drop shadow
+const createCustomPinIcon = () =>
+  L.divIcon({
+    className: "custom-leaflet-marker-pin",
+    html: `<div style="
+      width: 32px;
+      height: 32px;
+      background: #DC2626;
+      border: 3px solid #FFFFFF;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      box-shadow: 0 4px 14px rgba(0,0,0,0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+    ">
+      <div style="
+        width: 10px;
+        height: 10px;
+        background: #FFFFFF;
+        border-radius: 50%;
+        transform: rotate(45deg);
+      "></div>
+    </div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 32],
+  });
+
 export const ProfilePage = () => {
   const { user, role, logout, updateUser, cognitoActive } = useAuth();
 
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
+
+  // Officer & Forest Station States
+  const userRole = (role || user?.role || "Citizen").toLowerCase();
+  const isOfficer = userRole === "officer" || userRole === "responder";
+
+  const MUMBAI_DISTRICTS = [
+    "Mumbai Suburban", "Mumbai City", "Thane", "Navi Mumbai", "Palghar", "Raigad"
+  ];
+
+  const [district, setDistrict] = useState(user?.district || "Mumbai Suburban");
+  const [assignedStation, setAssignedStation] = useState(
+    user?.assigned_station || "Sanjay Gandhi National Park (SGNP) Range Office (Borivali East)"
+  );
+  const [badgeNumber, setBadgeNumber] = useState(user?.badge_number || "");
+  const [stations, setStations] = useState([]);
+  const [loadingStations, setLoadingStations] = useState(true);
+
+  // Address & Location States
+  const [address, setAddress] = useState(user?.address || user?.location_name || "");
+  const [city, setCity] = useState(user?.city || "Mumbai");
+  const [state, setState] = useState(user?.state || "Maharashtra");
+  const [pincode, setPincode] = useState(user?.pincode || "");
+  const [latitude, setLatitude] = useState(user?.latitude ? String(user.latitude) : "19.2288");
+  const [longitude, setLongitude] = useState(user?.longitude ? String(user.longitude) : "72.9106");
+
   const [loading, setLoading] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoStatus, setGeoStatus] = useState("");
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+
+  // Load database forest stations on mount and when district changes
+  useEffect(() => {
+    let isMounted = true;
+    const fetchStations = async () => {
+      setLoadingStations(true);
+      try {
+        const data = await apiService.getForestStations(district);
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          setStations(data);
+          const hasCurrent = data.some((s) => s.name === assignedStation);
+          if (!hasCurrent && isOfficer) {
+            setAssignedStation(data[0].name);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch forest stations:", err);
+      } finally {
+        if (isMounted) setLoadingStations(false);
+      }
+    };
+    fetchStations();
+    return () => {
+      isMounted = false;
+    };
+  }, [district, isOfficer]);
+
+  const mapContainerRef = useRef(null);
+  const mapInstanceRef = useRef(null);
+  const markerRef = useRef(null);
+
+  // Flag to differentiate between user manual typing vs programmatic reverse-geocode updates
+  const isPinSourceRef = useRef(false);
+  const searchTimeoutRef = useRef(null);
+
+  // 1. REVERSE GEOCODE: (lat, lng) -> Auto-fill Street Address, City, State, PIN
+  const reverseGeocodeCoords = async (lat, lng) => {
+    setGeoLoading(true);
+    setGeoStatus("Resolving address details from pinned location...");
+
+    const latNum = parseFloat(lat);
+    const lngNum = parseFloat(lng);
+
+    try {
+      // Primary: Nominatim with granular address components
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&addressdetails=1&lat=${latNum}&lon=${lngNum}`
+      );
+      const data = await res.json();
+
+      if (data && data.address) {
+        const a = data.address;
+
+        // Extract street name / landmark
+        const streetComponents = [
+          a.road || a.pedestrian || a.suburb,
+          a.neighbourhood || a.hamlet || a.quarter,
+          a.house_number ? `#${a.house_number}` : null,
+        ].filter(Boolean);
+
+        const resolvedStreet =
+          streetComponents.length > 0
+            ? streetComponents.join(", ")
+            : a.town || a.village || a.city_district || `Location (${latNum.toFixed(4)}, ${lngNum.toFixed(4)})`;
+
+        // Extract City / District
+        const resolvedCity = a.state_district || a.county || a.city || a.town || a.village || "Mumbai";
+
+        // Extract State
+        const resolvedState = a.state || "Maharashtra";
+
+        // Extract Postal code
+        const resolvedPincode = a.postcode || "";
+
+        // Mark as programmatic update so it does not trigger forward-geocoding loop
+        isPinSourceRef.current = true;
+        setAddress(resolvedStreet);
+        setCity(resolvedCity);
+        setState(resolvedState);
+        if (resolvedPincode) setPincode(resolvedPincode);
+
+        setGeoStatus("Address details updated automatically!");
+        setTimeout(() => setGeoStatus(""), 3500);
+        return;
+      }
+    } catch (err) {
+      console.warn("Nominatim reverse geocode fallback:", err);
+    }
+
+    try {
+      // Fallback: BigDataCloud Reverse Geocoding API
+      const bdcRes = await fetch(
+        `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latNum}&longitude=${lngNum}&localityLanguage=en`
+      );
+      const bdcData = await bdcRes.json();
+
+      if (bdcData) {
+        const resolvedStreet = bdcData.locality || bdcData.city || `Location (${latNum.toFixed(4)}, ${lngNum.toFixed(4)})`;
+        const resolvedCity = bdcData.city || bdcData.principalSubdivision || "Mumbai";
+        const resolvedState = bdcData.principalSubdivision || "Maharashtra";
+        const resolvedPincode = bdcData.postcode || "";
+
+        isPinSourceRef.current = true;
+        setAddress(resolvedStreet);
+        setCity(resolvedCity);
+        setState(resolvedState);
+        if (resolvedPincode) setPincode(resolvedPincode);
+
+        setGeoStatus("Address details updated automatically!");
+        setTimeout(() => setGeoStatus(""), 3500);
+      }
+    } catch (err) {
+      console.warn("BigDataCloud fallback failed:", err);
+    } finally {
+      setGeoLoading(false);
+      setTimeout(() => setGeoStatus(""), 3500);
+    }
+  };
+
+  // 2. FORWARD GEOCODE: Typed Address -> Auto-point Red Pin on Map
+  const geocodeAddressToMap = async (addressQuery) => {
+    const q = (addressQuery || [address, city, state, pincode].filter(Boolean).join(", ")).trim();
+    if (!q || q.length < 2) return;
+
+    setGeoLoading(true);
+    setGeoStatus("Locating address on map...");
+
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(q)}`
+      );
+      const data = await res.json();
+
+      if (data && data.length > 0) {
+        const item = data[0];
+        const newLat = parseFloat(item.lat).toFixed(6);
+        const newLng = parseFloat(item.lon).toFixed(6);
+
+        setLatitude(newLat);
+        setLongitude(newLng);
+
+        // Move the red pin marker immediately & pan the map
+        if (markerRef.current) {
+          markerRef.current.setLatLng([item.lat, item.lon]);
+        }
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.setView([item.lat, item.lon], 14);
+        }
+
+        // Fill supplementary city/state/pin if empty
+        const a = item.address || {};
+        const matchedCity = a.state_district || a.county || a.city || a.town || a.village;
+        const matchedState = a.state;
+        const matchedPin = a.postcode;
+
+        if (matchedCity && (!city || city === "Mumbai")) setCity(matchedCity);
+        if (matchedState && (!state || state === "Maharashtra")) setState(matchedState);
+        if (matchedPin && !pincode) setPincode(matchedPin);
+
+        setGeoStatus("Map pinpointed to matching address!");
+        setTimeout(() => setGeoStatus(""), 3500);
+      } else {
+        setGeoStatus("Could not find exact location for typed address.");
+        setTimeout(() => setGeoStatus(""), 3500);
+      }
+    } catch (err) {
+      console.warn("Geocoding lookup error:", err);
+      setGeoStatus("");
+    } finally {
+      setGeoLoading(false);
+    }
+  };
+
+  // Debounced auto-pointing whenever user types into the address or city text fields
+  useEffect(() => {
+    // If the address update came from clicking/dragging the pin or GPS, do not trigger a forward search
+    if (isPinSourceRef.current) {
+      isPinSourceRef.current = false;
+      return;
+    }
+
+    if (!address || address.trim().length < 3) return;
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      geocodeAddressToMap([address, city, state, pincode].filter(Boolean).join(", "));
+    }, 750);
+
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, [address, city, state, pincode]);
+
+  // 3. FETCH CURRENT GPS: Auto-point Red Pin & Auto-fill Address Fields
+  const handleDetectGps = () => {
+    if (navigator.geolocation) {
+      setGeoLoading(true);
+      setGeoStatus("Detecting current GPS coordinates...");
+
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          const latStr = lat.toFixed(6);
+          const lngStr = lng.toFixed(6);
+
+          setLatitude(latStr);
+          setLongitude(lngStr);
+
+          // Position red pin marker and center map
+          if (markerRef.current) {
+            markerRef.current.setLatLng([lat, lng]);
+          }
+          if (mapInstanceRef.current) {
+            mapInstanceRef.current.setView([lat, lng], 15);
+          }
+
+          // Mark as pin source to prevent search loop and auto-fill address fields
+          isPinSourceRef.current = true;
+          reverseGeocodeCoords(lat, lng);
+        },
+        (err) => {
+          setGeoLoading(false);
+          setError("Unable to retrieve GPS coordinates. Permission denied or unavailable.");
+          setTimeout(() => setError(""), 4500);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    } else {
+      alert("Geolocation is not supported by your browser.");
+    }
+  };
+
+  // INITIALIZE INTERACTIVE LEAFLET MAP
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+
+    // Clean up any existing map instance on this container (safe for React StrictMode)
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+      mapInstanceRef.current = null;
+    }
+    if (mapContainerRef.current._leaflet_id) {
+      delete mapContainerRef.current._leaflet_id;
+    }
+
+    const initLat = parseFloat(latitude) || 11.6054;
+    const initLng = parseFloat(longitude) || 76.0830;
+
+    const map = L.map(mapContainerRef.current, {
+      center: [initLat, initLng],
+      zoom: 14,
+      zoomControl: true,
+      doubleClickZoom: true,
+    });
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map);
+
+    const pinIcon = createCustomPinIcon();
+    const marker = L.marker([initLat, initLng], {
+      draggable: true,
+      icon: pinIcon,
+    }).addTo(map);
+
+    mapInstanceRef.current = map;
+    markerRef.current = marker;
+
+    // CLICK MAP: Instantly move red pointer & auto-fill address text fields!
+    map.on("click", (e) => {
+      const { lat, lng } = e.latlng;
+      marker.setLatLng([lat, lng]);
+      setLatitude(lat.toFixed(6));
+      setLongitude(lng.toFixed(6));
+      isPinSourceRef.current = true;
+      reverseGeocodeCoords(lat, lng);
+    });
+
+    // DRAG MARKER: Move red pointer & auto-fill address text fields!
+    marker.on("dragend", () => {
+      const { lat, lng } = marker.getLatLng();
+      setLatitude(lat.toFixed(6));
+      setLongitude(lng.toFixed(6));
+      isPinSourceRef.current = true;
+      reverseGeocodeCoords(lat, lng);
+    });
+
+    // Recalculate dimensions after container renders
+    const resizeTimer = setTimeout(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    }, 200);
+
+    return () => {
+      clearTimeout(resizeTimer);
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+        markerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Update marker position when manual latitude/longitude input boxes are edited
+  useEffect(() => {
+    if (mapInstanceRef.current && markerRef.current) {
+      const latNum = parseFloat(latitude);
+      const lngNum = parseFloat(longitude);
+      if (!isNaN(latNum) && !isNaN(lngNum)) {
+        const cur = markerRef.current.getLatLng();
+        if (Math.abs(cur.lat - latNum) > 0.00001 || Math.abs(cur.lng - lngNum) > 0.00001) {
+          markerRef.current.setLatLng([latNum, lngNum]);
+          mapInstanceRef.current.panTo([latNum, lngNum]);
+        }
+      }
+    }
+  }, [latitude, longitude]);
 
   const handleSaveProfile = async (e) => {
     e.preventDefault();
@@ -22,55 +415,94 @@ export const ProfilePage = () => {
     setMsg("");
     setError("");
 
+    const updatedProfile = {
+      name,
+      phone,
+      address,
+      city,
+      state,
+      pincode,
+      latitude,
+      longitude,
+      location_name: address || `${city}, ${state}`,
+      district: isOfficer ? district : undefined,
+      assigned_station: assignedStation,
+      badge_number: badgeNumber,
+    };
+
     try {
-      await apiService.updateUserProfile({ name, phone });
-      updateUser({ name, phone });
-      setMsg("Profile details updated successfully.");
-    } catch (err) {
-      updateUser({ name, phone });
-      setMsg("Profile saved locally.");
+      await apiService.updateUserProfile(updatedProfile);
+      updateUser(updatedProfile);
+      setMsg("Profile details and interactive location updated successfully!");
+    } catch {
+      updateUser(updatedProfile);
+      setMsg("Profile & address saved locally in session.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={{ maxWidth: "800px", margin: "0 auto" }}>
+    <div style={{ maxWidth: "900px", margin: "0 auto", paddingBottom: "4rem" }}>
       <div style={{ marginBottom: "2rem" }}>
-        <h1 style={{ fontSize: "2rem", margin: 0 }}>Account Settings & Profile</h1>
-        <p className="text-muted" style={{ fontSize: "0.9375rem", marginTop: "0.25rem" }}>
-          Manage your personal information, security preferences, and role permissions.
+        <span
+          style={{
+            fontFamily: "'Dancing Script', cursive",
+            fontSize: "1.75rem",
+            color: "var(--primary-green)",
+            fontWeight: 700,
+            display: "block",
+            marginBottom: "0.25rem",
+          }}
+        >
+          User Account & Location Profile
+        </span>
+        <h1 style={{ fontSize: "2.25rem", margin: 0, fontWeight: 800 }}>Account Settings & Location</h1>
+        <p className="text-muted" style={{ fontSize: "1rem", marginTop: "0.25rem" }}>
+          Manage your personal details, interactive map address, emergency contacts, and role authorization.
         </p>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-        <Card style={{ backgroundColor: "var(--deep-forest)", color: "#FFFFFF" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
+        {/* HEADER USER BADGE */}
+        <Card style={{ background: "linear-gradient(135deg, #173D2D 0%, #0D261B 100%)", color: "#FFFFFF", borderRadius: "20px" }}>
           <div className="flex-between" style={{ flexWrap: "wrap", gap: "1.25rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
               <div
                 style={{
-                  width: "60px",
-                  height: "60px",
+                  width: "64px",
+                  height: "64px",
                   borderRadius: "50%",
                   backgroundColor: "var(--primary-green)",
                   color: "#FFFFFF",
                   display: "grid",
                   placeItems: "center",
-                  fontSize: "1.75rem",
+                  fontSize: "1.875rem",
                   fontWeight: 800,
                   border: "2px solid var(--sage)",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
                 }}
               >
                 {user?.name?.[0]?.toUpperCase() || "U"}
               </div>
               <div>
-                <h3 style={{ fontSize: "1.375rem", color: "#FFFFFF", margin: 0 }}>{user?.name || "User Account"}</h3>
-                <p style={{ color: "var(--sage)", fontSize: "0.875rem", marginTop: "0.25rem" }}>{user?.email}</p>
+                <h3 style={{ fontSize: "1.5rem", color: "#FFFFFF", margin: 0, fontWeight: 800 }}>{user?.name || "User Account"}</h3>
+                <p style={{ color: "var(--sage)", fontSize: "0.9375rem", marginTop: "0.25rem" }}>{user?.email}</p>
+                {address && (
+                  <p style={{ color: "rgba(255,255,255,0.8)", fontSize: "0.8125rem", marginTop: "0.25rem", display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                    <MapPin size={14} style={{ color: "#34D399" }} /> {address}, {city}, {state}
+                  </p>
+                )}
+                {assignedStation && isOfficer && (
+                  <p style={{ color: "#FBBF24", fontSize: "0.8125rem", marginTop: "0.25rem", display: "flex", alignItems: "center", gap: "0.375rem", fontWeight: 700 }}>
+                    <Radio size={14} style={{ color: "#34D399" }} /> Station: {assignedStation} {badgeNumber ? `(${badgeNumber})` : ""}
+                  </p>
+                )}
               </div>
             </div>
 
-            <Badge variant={role === "Admin" ? "critical" : role === "Responder" ? "high" : "medium"}>
-              {role} Account
+            <Badge variant={role === "Admin" ? "critical" : role === "Responder" || role === "Officer" ? "high" : "pending"}>
+              {role || "Citizen"} Account
             </Badge>
           </div>
         </Card>
@@ -78,45 +510,377 @@ export const ProfilePage = () => {
         {msg && <AlertMessage type="success" message={msg} />}
         {error && <AlertMessage type="error" message={error} />}
 
-        <Card title="Personal Information">
-          <form onSubmit={handleSaveProfile} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-            <div className="grid-cols-2" style={{ gap: "1.25rem" }}>
+        {/* PERSONAL DETAILS & LOCATION FORM */}
+        <form onSubmit={handleSaveProfile} style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
+          {/* OFFICER SPECIFIC FOREST STATION CARD */}
+          {isOfficer && (
+            <Card
+              title="Assigned Forest Range Station & Officer Credentials"
+              style={{
+                border: "1.5px solid rgba(52, 211, 153, 0.5)",
+                backgroundColor: "#F0FDF4",
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                {/* DISTRICT SELECTION */}
+                <div>
+                  <label
+                    htmlFor="officerDistrict"
+                    style={{
+                      fontWeight: 800,
+                      color: "#166534",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.375rem",
+                      margin: "0 0 0.25rem",
+                    }}
+                  >
+                    <Compass size={16} /> Operational District *
+                  </label>
+                  <p style={{ fontSize: "0.8125rem", color: "#15803D", margin: "0 0 0.625rem" }}>
+                    Select your operational jurisdiction district. Forest stations below will dynamically update.
+                  </p>
+                  <select
+                    id="officerDistrict"
+                    value={district}
+                    onChange={(e) => setDistrict(e.target.value)}
+                    style={{
+                      height: "44px",
+                      fontWeight: 700,
+                      borderRadius: "10px",
+                      border: "1.5px solid rgba(22, 101, 52, 0.4)",
+                      backgroundColor: "#FFFFFF",
+                      fontSize: "0.9375rem",
+                    }}
+                    required
+                  >
+                    {MUMBAI_DISTRICTS.map((d) => (
+                      <option key={d} value={d}>
+                        {d} District
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="assignedStation"
+                    style={{
+                      fontWeight: 800,
+                      color: "#166534",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.375rem",
+                      margin: "0 0 0.25rem",
+                    }}
+                  >
+                    <Compass size={16} /> Designated Forest Office / Station in {district} *
+                  </label>
+                  <p style={{ fontSize: "0.8125rem", color: "#15803D", margin: "0 0 0.625rem" }}>
+                    Select your official station from active database records. Incidents, citizen reports, and emergency dispatches tagged to this station will route to your command desk.
+                  </p>
+
+                  {loadingStations ? (
+                    <p style={{ fontSize: "0.8125rem", color: "var(--muted-text)" }}>Connecting to database stations...</p>
+                  ) : (
+                    <select
+                      id="assignedStation"
+                      value={assignedStation}
+                      onChange={(e) => setAssignedStation(e.target.value)}
+                      style={{
+                        height: "44px",
+                        fontWeight: 700,
+                        borderRadius: "10px",
+                        border: "1.5px solid rgba(22, 101, 52, 0.4)",
+                        backgroundColor: "#FFFFFF",
+                        fontSize: "0.9375rem",
+                      }}
+                      required
+                    >
+                      {stations.map((stn) => (
+                        <option key={stn.id || stn.name} value={stn.name}>
+                          {stn.name} ({stn.range})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="badgeNumber" style={{ fontWeight: 700, color: "#166534" }}>
+                    Officer Badge ID / Patrol Call-Sign
+                  </label>
+                  <input
+                    id="badgeNumber"
+                    type="text"
+                    placeholder="e.g. KL-FR-RRT-01"
+                    value={badgeNumber}
+                    onChange={(e) => setBadgeNumber(e.target.value)}
+                    style={{ backgroundColor: "#FFFFFF" }}
+                  />
+                </div>
+              </div>
+            </Card>
+          )}
+
+          <Card title="Personal Information">
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              <div className="grid-cols-2" style={{ gap: "1.25rem" }}>
+                <div>
+                  <label htmlFor="name">Full Name *</label>
+                  <input
+                    id="name"
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="email">Email Address</label>
+                  <input id="email" type="email" value={user?.email || ""} disabled style={{ opacity: 0.7, cursor: "not-allowed" }} />
+                </div>
+              </div>
+
+              <div className={!isOfficer ? "grid-cols-2" : ""} style={{ gap: "1.25rem" }}>
+                <div>
+                  <label htmlFor="phone">Phone / Emergency Contact</label>
+                  <input
+                    id="phone"
+                    type="tel"
+                    placeholder="+91 98765 43210"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
+                </div>
+
+                {!isOfficer && (
+                  <div>
+                    <label htmlFor="nearestStation">Nearest Forest Station (Optional)</label>
+                    <select
+                      id="nearestStation"
+                      value={assignedStation}
+                      onChange={(e) => setAssignedStation(e.target.value)}
+                      style={{
+                        height: "42px",
+                        borderRadius: "8px",
+                        border: "1px solid var(--border-color)",
+                        backgroundColor: "#FFFFFF",
+                        fontSize: "0.875rem",
+                      }}
+                    >
+                      <option value="">Select Nearest Station (Optional)</option>
+                      {stations.map((stn) => (
+                        <option key={stn.id || stn.name} value={stn.name}>
+                          {stn.name} ({stn.range})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          {/* INTERACTIVE LOCATION & PRIMARY ADDRESS SECTION */}
+          <Card title="Interactive Location & Primary Address">
+            <p className="text-muted" style={{ fontSize: "0.875rem", marginBottom: "1.25rem" }}>
+              TheraPhylax emergency dispatches, nearby Forest Officer station matching, and spatial risk warnings are tailored to your address coordinates. Click anywhere on the map to drop a pin or type an address below.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+              {/* STREET ADDRESS WITH DETECT GPS & SEARCH BUTTONS */}
               <div>
-                <label htmlFor="name">Full Name</label>
-                <input
-                  id="name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
+                <div className="flex-between" style={{ marginBottom: "0.375rem" }}>
+                  <label htmlFor="address" style={{ margin: 0, fontWeight: 700 }}>
+                    Street Address / Landmark *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleDetectGps}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "var(--primary-green)",
+                      fontSize: "0.8125rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                    }}
+                  >
+                    <Compass size={15} /> Detect Current GPS
+                  </button>
+                </div>
+
+                <div style={{ position: "relative" }}>
+                  <input
+                    id="address"
+                    type="text"
+                    placeholder="e.g. House No. 42, Forest Buffer Road, Sector 4 (or click map to pin)"
+                    value={address}
+                    onChange={(e) => {
+                      isPinSourceRef.current = false;
+                      setAddress(e.target.value);
+                    }}
+                    onBlur={() => geocodeAddressToMap(address)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        geocodeAddressToMap(address);
+                      }
+                    }}
+                    style={{ paddingRight: "6.5rem" }}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => geocodeAddressToMap(address)}
+                    style={{
+                      position: "absolute",
+                      right: "0.5rem",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      backgroundColor: "var(--primary-green)",
+                      color: "#FFFFFF",
+                      border: "none",
+                      borderRadius: "8px",
+                      padding: "0.375rem 0.75rem",
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.25rem",
+                    }}
+                  >
+                    <Search size={13} /> Find on Map
+                  </button>
+                </div>
+
+                {geoStatus && (
+                  <div
+                    style={{
+                      fontSize: "0.75rem",
+                      color: "var(--primary-green)",
+                      marginTop: "0.375rem",
+                      fontWeight: 600,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.375rem",
+                    }}
+                  >
+                    {geoLoading ? <RefreshCw size={12} className="spin" /> : <CheckCircle2 size={12} />}
+                    <span>{geoStatus}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* CITY, STATE, PINCODE */}
+              <div className="grid-cols-3" style={{ gap: "1.25rem" }}>
+                <div>
+                  <label htmlFor="city">City / District *</label>
+                  <input
+                    id="city"
+                    type="text"
+                    value={city}
+                    onChange={(e) => {
+                      isPinSourceRef.current = false;
+                      setCity(e.target.value);
+                    }}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="state">State *</label>
+                  <input
+                    id="state"
+                    type="text"
+                    value={state}
+                    onChange={(e) => {
+                      isPinSourceRef.current = false;
+                      setState(e.target.value);
+                    }}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="pincode">PIN / Postal Code</label>
+                  <input
+                    id="pincode"
+                    type="text"
+                    value={pincode}
+                    onChange={(e) => {
+                      isPinSourceRef.current = false;
+                      setPincode(e.target.value);
+                    }}
+                    placeholder="673121"
+                  />
+                </div>
+              </div>
+
+              {/* LATITUDE & LONGITUDE INPUTS */}
+              <div className="grid-cols-2" style={{ gap: "1.25rem" }}>
+                <div>
+                  <label htmlFor="latitude">Latitude Coordinate</label>
+                  <input
+                    id="latitude"
+                    type="number"
+                    step="any"
+                    value={latitude}
+                    onChange={(e) => setLatitude(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="longitude">Longitude Coordinate</label>
+                  <input
+                    id="longitude"
+                    type="number"
+                    step="any"
+                    value={longitude}
+                    onChange={(e) => setLongitude(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* INTERACTIVE PINPOINT MAP CONTAINER */}
+              <div>
+                <div className="flex-between" style={{ marginBottom: "0.375rem" }}>
+                  <label style={{ fontSize: "0.8125rem", fontWeight: 700, color: "var(--deep-forest)", display: "flex", alignItems: "center", gap: "0.375rem", margin: 0 }}>
+                    <MapPin size={15} style={{ color: "#DC2626" }} /> Interactive Pinpoint Map (Click anywhere to place red pin | Drag pin to adjust)
+                  </label>
+                  <span style={{ fontSize: "0.75rem", color: "var(--muted-text)" }}>
+                    Pinned: {parseFloat(latitude || "0").toFixed(4)}, {parseFloat(longitude || "0").toFixed(4)}
+                  </span>
+                </div>
+
+                <div
+                  ref={mapContainerRef}
+                  style={{
+                    height: "300px",
+                    width: "100%",
+                    borderRadius: "14px",
+                    border: "2px solid var(--border-color)",
+                    overflow: "hidden",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                    zIndex: 1,
+                    cursor: "crosshair",
+                  }}
                 />
               </div>
 
-              <div>
-                <label htmlFor="email">Email Address (Read-only)</label>
-                <input id="email" type="email" value={user?.email || ""} disabled style={{ backgroundColor: "#F3F4F6", cursor: "not-allowed" }} />
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0.5rem" }}>
+                <Button type="submit" variant="primary" size="lg" loading={loading} icon={Save}>
+                  Save Address & Location Profile
+                </Button>
               </div>
             </div>
+          </Card>
+        </form>
 
-            <div>
-              <label htmlFor="phone">Emergency Contact Phone Number</label>
-              <input
-                id="phone"
-                type="tel"
-                placeholder="+91 9876543210"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
-            </div>
-
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <Button type="submit" variant="primary" loading={loading} icon={Save}>
-                Save Profile Changes
-              </Button>
-            </div>
-          </form>
-        </Card>
-
+        {/* SECURITY & PROTOCOL */}
         <Card title="Security & Authentication Protocol">
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem", fontSize: "0.875rem" }}>
             <div className="flex-between">
@@ -129,14 +893,15 @@ export const ProfilePage = () => {
 
             <div className="flex-between" style={{ borderTop: "1px solid var(--border-color)", paddingTop: "1rem" }}>
               <div>
-                <strong>Account Privilege Level:</strong>
-                <div className="text-muted">Role: {role} (Enforced by backend token validation)</div>
+                <strong>Role Authorization Level:</strong>
+                <div className="text-muted">Verified Role: {role}</div>
               </div>
               <Shield size={20} style={{ color: "var(--primary-green)" }} />
             </div>
           </div>
         </Card>
 
+        {/* LOGOUT SESSION */}
         <Card style={{ border: "1px solid rgba(220,38,38,0.3)", backgroundColor: "#FEF2F2" }}>
           <div className="flex-between" style={{ flexWrap: "wrap", gap: "1rem" }}>
             <div>

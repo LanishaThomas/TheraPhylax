@@ -9,6 +9,8 @@ import { RoleGuard } from "./components/routes/RoleGuard";
 import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { OfficerLoginPage } from "./pages/OfficerLoginPage";
+import { OfficerRegisterPage } from "./pages/OfficerRegisterPage";
 import { VerifyEmailPage } from "./pages/VerifyEmailPage";
 import { ForgotPasswordPage } from "./pages/ForgotPasswordPage";
 import { RisksPage } from "./pages/RisksPage";
@@ -16,10 +18,16 @@ import { RisksPage } from "./pages/RisksPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { NewReportPage } from "./pages/NewReportPage";
 import { ReportsPage } from "./pages/ReportsPage";
+import { MyReportsPage } from "./pages/MyReportsPage";
 import { ReportDetailsPage } from "./pages/ReportDetailsPage";
 import { AlertsPage } from "./pages/AlertsPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { CreateGeographicAlertPage } from "./pages/CreateGeographicAlertPage";
+import { CreatePublicUpdatePage } from "./pages/CreatePublicUpdatePage";
+import { PublicSafetyUpdatesPage } from "./pages/PublicSafetyUpdatesPage";
+import { NewsPage } from "./pages/NewsPage";
 import { ResponderDashboardPage } from "./pages/ResponderDashboardPage";
+import { OfficerDashboardPage } from "./pages/OfficerDashboardPage";
 import { AdminDashboardPage } from "./pages/AdminDashboardPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 
@@ -32,6 +40,8 @@ function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+            <Route path="/officer/login" element={<OfficerLoginPage />} />
+            <Route path="/officer/register" element={<OfficerRegisterPage />} />
             <Route path="/verify-email" element={<VerifyEmailPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
             <Route path="/risks" element={<RisksPage />} />
@@ -45,17 +55,47 @@ function App() {
             }
           >
             <Route path="/dashboard" element={<DashboardPage />} />
+            
+            {/* Report incident / accident routes */}
+            <Route path="/accidents/report" element={<NewReportPage />} />
             <Route path="/reports/new" element={<NewReportPage />} />
+
+            {/* View my submitted reports routes */}
+            <Route path="/accidents/my-reports" element={<MyReportsPage />} />
+            <Route path="/reports/my" element={<MyReportsPage />} />
+
+            {/* General reports queue & details */}
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/reports/:id" element={<ReportDetailsPage />} />
+
+            {/* Public Safety Updates & Geofenced Map */}
+            <Route path="/updates" element={<PublicSafetyUpdatesPage />} />
+            <Route path="/officer/updates" element={<PublicSafetyUpdatesPage />} />
+            <Route path="/updates/new" element={<RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}><CreatePublicUpdatePage /></RoleGuard>} />
+            <Route path="/officer/updates/create" element={<RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}><CreatePublicUpdatePage /></RoleGuard>} />
+
+            {/* Alerts */}
             <Route path="/alerts" element={<AlertsPage />} />
+            <Route path="/officer/alerts/create" element={<RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}><CreateGeographicAlertPage /></RoleGuard>} />
+
+            {/* News & Profile */}
+            <Route path="/news" element={<NewsPage />} />
             <Route path="/profile" element={<ProfilePage />} />
 
+            {/* Officer & Responder Dashboards */}
+            <Route
+              path="/officer/dashboard"
+              element={
+                <RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}>
+                  <OfficerDashboardPage />
+                </RoleGuard>
+              }
+            />
             <Route
               path="/responder"
               element={
-                <RoleGuard allowedRoles={["Responder", "Admin"]}>
-                  <ResponderDashboardPage />
+                <RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}>
+                  <OfficerDashboardPage />
                 </RoleGuard>
               }
             />

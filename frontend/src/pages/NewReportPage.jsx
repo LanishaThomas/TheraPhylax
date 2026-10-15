@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   FilePlus,
@@ -7,9 +7,12 @@ import {
   ArrowLeft,
   PhoneCall,
   ShieldAlert,
+  Shield,
+  Radio,
   Heart,
 } from "lucide-react";
 import { apiService } from "../services/api";
+import { LocationPickerMap } from "../components/ui/LocationPickerMap";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { AlertMessage } from "../components/ui/AlertMessage";
@@ -36,6 +39,29 @@ export const NewReportPage = () => {
     animal_status: "injured",
     reporter_safe: "yes",
   });
+
+  const [dbStations, setDbStations] = useState([]);
+  const [loadingStations, setLoadingStations] = useState(true);
+  const [taggedOfficers, setTaggedOfficers] = useState([]);
+  const [customOfficerTag, setCustomOfficerTag] = useState("");
+
+  useEffect(() => {
+    const fetchStations = async () => {
+      try {
+        const data = await apiService.getForestStations();
+        if (Array.isArray(data) && data.length > 0) {
+          setDbStations(data);
+          // Default tag the first station from the database
+          setTaggedOfficers([data[0].name]);
+        }
+      } catch (err) {
+        console.error("Error fetching database forest offices:", err);
+      } finally {
+        setLoadingStations(false);
+      }
+    };
+    fetchStations();
+  }, []);
 
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
@@ -85,6 +111,11 @@ export const NewReportPage = () => {
 
     setLoading(true);
     try {
+      const finalTagged = [
+        ...taggedOfficers,
+        ...(customOfficerTag.trim() ? [customOfficerTag.trim()] : []),
+      ];
+
       const payload = {
         title: formData.title,
         category: formData.category,
@@ -100,13 +131,15 @@ export const NewReportPage = () => {
         animal_type: formData.animal_type || null,
         animal_status: formData.animal_status || null,
         reporter_safe: formData.reporter_safe === "yes",
+        tagged_forest_officers: finalTagged,
+        forest_range: "SGNP Core Wildlife Range",
       };
 
       await apiService.createReport(payload);
       setSuccess(true);
       setTimeout(() => {
         navigate("/accidents/my-reports");
-      }, 2000);
+      }, 1800);
     } catch (err) {
       setError(err.message || "Failed to submit report. Please try again.");
     } finally {
@@ -351,8 +384,8 @@ export const NewReportPage = () => {
           {formData.category === "Injured Animal" && (
             <div
               style={{
-                backgroundColor: "#FCE7F3",
-                border: "1px solid #FBCFE8",
+                backgroundColor: "#FEF3C7",
+                border: "1px solid #FDE68A",
                 borderRadius: "14px",
                 padding: "1.25rem",
                 display: "flex",
@@ -360,9 +393,9 @@ export const NewReportPage = () => {
                 gap: "1rem",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#9D174D", fontWeight: 700 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#92400E", fontWeight: 700 }}>
                 <Heart size={18} />
-                <span>Animal Rescue Context Questions (Triggers NGO Dispatch)</span>
+                <span>Wildlife & Animal Emergency Context (Triggers Forest Patrol & Wildlife Rapid Response)</span>
               </div>
               <div className="grid-cols-3" style={{ gap: "1rem" }}>
                 <div>
@@ -371,7 +404,7 @@ export const NewReportPage = () => {
                     id="animal_type"
                     name="animal_type"
                     type="text"
-                    placeholder="e.g. Dog, Cattle, Deer, Bird"
+                    placeholder="e.g. Leopard, Spotted Deer, Elephant, Wild Boar"
                     value={formData.animal_type}
                     onChange={handleChange}
                   />
@@ -385,9 +418,9 @@ export const NewReportPage = () => {
                     onChange={handleChange}
                   >
                     <option value="injured">Injured / Bleeding</option>
-                    <option value="trapped">Trapped / Stuck</option>
+                    <option value="trapped">Trapped / Stuck in Fence</option>
                     <option value="sick">Sick / Dehydrated</option>
-                    <option value="in_danger">In Danger / High Risk</option>
+                    <option value="in_danger">In Danger / High Human Conflict</option>
                   </select>
                 </div>
                 <div>
@@ -406,64 +439,121 @@ export const NewReportPage = () => {
             </div>
           )}
 
-          <div>
-            <div className="flex-between" style={{ marginBottom: "0.375rem" }}>
-              <label htmlFor="location_name" style={{ margin: 0 }}>Incident Location / Address *</label>
-              <button
-                type="button"
-                onClick={handleGetLocation}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--primary-green)",
-                  fontSize: "0.8125rem",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.25rem",
-                }}
-              >
-                <MapPin size={14} /> Detect Current GPS
-              </button>
+          {/* TAG FOREST OFFICERS & STATIONS SECTION */}
+          <div
+            style={{
+              backgroundColor: "var(--sage-light)",
+              border: "1.5px solid var(--sage)",
+              borderRadius: "14px",
+              padding: "1.25rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.875rem",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--deep-forest)", fontWeight: 700 }}>
+                <Shield size={18} style={{ color: "var(--primary-green)" }} />
+                <span>Tag Forest Officers & Forest Range Stations (Immediate Dispatch Alert) *</span>
+              </div>
+              <span style={{ fontSize: "0.75rem", color: "var(--primary-green)", fontWeight: 700 }}>
+                {taggedOfficers.length} Station(s) Tagged
+              </span>
             </div>
-            <input
-              id="location_name"
-              name="location_name"
-              type="text"
-              placeholder="e.g. Village Edge Road, Sector 4, Wayanad"
-              value={formData.location_name}
-              onChange={handleChange}
-              required
-            />
+
+            <p style={{ fontSize: "0.8125rem", color: "var(--muted-text)", margin: 0 }}>
+              Tag the responsible Forest Range stations or wildlife flying squads. A prioritized dispatch notification will be transmitted directly to their command dashboard.
+            </p>
+
+            {loadingStations ? (
+              <div style={{ padding: "1.5rem", textAlign: "center", color: "var(--muted-text)", fontSize: "0.875rem" }}>
+                Connecting to Forest Department Database stations...
+              </div>
+            ) : dbStations.length === 0 ? (
+              <div style={{ padding: "1rem", color: "var(--muted-text)", fontSize: "0.875rem" }}>
+                No registered Forest Stations found in database.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "0.75rem" }}>
+                {dbStations.map((stn) => {
+                  const isTagged = taggedOfficers.includes(stn.name);
+                  return (
+                    <label
+                      key={stn.id || stn.name}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "0.75rem",
+                        padding: "0.75rem 0.875rem",
+                        borderRadius: "12px",
+                        backgroundColor: isTagged ? "#FFFFFF" : "rgba(255,255,255,0.7)",
+                        border: isTagged ? "2px solid var(--primary-green)" : "1px solid var(--border-color)",
+                        boxShadow: isTagged ? "0 4px 12px rgba(39, 103, 73, 0.15)" : "none",
+                        cursor: "pointer",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isTagged}
+                        onChange={() => {
+                          if (isTagged) {
+                            setTaggedOfficers(taggedOfficers.filter((n) => n !== stn.name));
+                          } else {
+                            setTaggedOfficers([...taggedOfficers, stn.name]);
+                          }
+                        }}
+                        style={{ marginTop: "0.25rem", accentColor: "var(--primary-green)", width: "16px", height: "16px" }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--charcoal)", lineHeight: 1.3 }}>
+                          {stn.name}
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "0.375rem", marginTop: "0.25rem" }}>
+                          <span style={{ fontSize: "0.6875rem", color: "var(--primary-green)", fontWeight: 600 }}>
+                            {stn.range}
+                          </span>
+                          {stn.radio_frequency && (
+                            <span style={{ fontSize: "0.6875rem", color: "#B45309", backgroundColor: "#FEF3C7", padding: "0.1rem 0.35rem", borderRadius: "4px", fontWeight: 600 }}>
+                              Radio: {stn.radio_frequency}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--muted-text)", marginTop: "0.2rem" }}>
+                          📞 {stn.phone}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.25rem" }}>
+              <input
+                type="text"
+                placeholder="Or type specific Beat Officer Call Sign / Range Station..."
+                value={customOfficerTag}
+                onChange={(e) => setCustomOfficerTag(e.target.value)}
+                style={{ fontSize: "0.8125rem", padding: "0.5rem 0.75rem" }}
+              />
+            </div>
           </div>
 
-          <div className="grid-cols-2" style={{ gap: "1.25rem" }}>
-            <div>
-              <label htmlFor="latitude">Latitude (Optional)</label>
-              <input
-                id="latitude"
-                name="latitude"
-                type="number"
-                step="any"
-                placeholder="e.g. 11.6054"
-                value={formData.latitude}
-                onChange={handleChange}
-              />
-            </div>
-            <div>
-              <label htmlFor="longitude">Longitude (Optional)</label>
-              <input
-                id="longitude"
-                name="longitude"
-                type="number"
-                step="any"
-                placeholder="e.g. 76.0830"
-                value={formData.longitude}
-                onChange={handleChange}
-              />
-            </div>
-          </div>
+          <LocationPickerMap
+            locationName={formData.location_name}
+            latitude={formData.latitude}
+            longitude={formData.longitude}
+            onLocationChange={({ locationName, latitude, longitude }) => {
+              setFormData((prev) => ({
+                ...prev,
+                location_name: locationName,
+                latitude,
+                longitude,
+              }));
+            }}
+            label="Incident Location / Address"
+          />
 
           <div>
             <label htmlFor="description">Detailed Description *</label>

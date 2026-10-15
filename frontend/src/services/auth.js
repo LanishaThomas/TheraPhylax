@@ -11,7 +11,6 @@ export const isCognitoConfigured = () => {
 export const getRedirectPathForRole = (role) => {
   const r = (role || "").toLowerCase();
   if (r === "officer" || r === "responder") return "/officer/dashboard";
-  if (r === "ngo") return "/ngo/dashboard";
   if (r === "admin") return "/admin";
   return "/dashboard";
 };
@@ -112,7 +111,7 @@ export const authService = {
     }
   },
 
-  register: async ({ name, email, password }) => {
+  register: async ({ name, email, password, role = "Citizen", district = null, assigned_station = null, badge_number = null }) => {
     if (!name || !email || !password) {
       throw new Error("All fields are required.");
     }
@@ -124,11 +123,22 @@ export const authService = {
       throw new Error("Password must contain uppercase, lowercase, numbers, and special symbols.");
     }
 
+    // Cache officer details locally so they persist regardless of auth provider
+    const registeredUser = {
+      name,
+      email,
+      role: role || "Citizen",
+      district,
+      assigned_station,
+      badge_number,
+    };
+    localStorage.setItem("theraphylax_user", JSON.stringify(registeredUser));
+
     if (isCognitoConfigured()) {
       let userAttrs = [
         { Name: "email", Value: email },
         { Name: "name", Value: name },
-        { Name: "custom:role", Value: "Citizen" },
+        { Name: "custom:role", Value: role || "Citizen" },
       ];
 
       let response = await fetch(`https://cognito-idp.${COGNITO_REGION}.amazonaws.com/`, {
@@ -182,12 +192,13 @@ export const authService = {
         email: email,
         userSub: data.UserSub,
         userConfirmed: data.UserConfirmed,
+        user: registeredUser,
         message: "Registration successful! Enter the 6-digit code sent to your email to verify.",
       };
     } else {
       return apiRequest("/auth/register", {
         method: "POST",
-        body: JSON.stringify({ name, email, password, role: "Citizen" }),
+        body: JSON.stringify({ name, email, password, role, district, assigned_station, badge_number }),
       });
     }
   },

@@ -13,64 +13,44 @@ import {
   Zap,
   Users,
   CheckCircle2,
+  Compass,
 } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 
 export const LandingPage = () => {
   return (
-    <div style={{ backgroundColor: "var(--bg-warm)", minHeight: "100vh" }}>
-      {/* HERO SECTION */}
+    <div style={{ backgroundColor: "#F8FAF8", minHeight: "100vh" }}>
+      {/* LIGHT SHADE HERO SECTION */}
       <section
         style={{
-          background: "linear-gradient(135deg, #071D13 0%, #133927 50%, #1C4F37 100%)",
-          color: "#FFFFFF",
-          padding: "5.5rem 1.5rem 6.5rem",
+          background: "linear-gradient(135deg, #F3F7F4 0%, #E8F2EC 50%, #DCEDE3 100%)",
+          color: "var(--charcoal)",
+          padding: "3.5rem 1.5rem 4.5rem",
           position: "relative",
           overflow: "hidden",
+          borderBottom: "1px solid rgba(39, 103, 73, 0.12)",
         }}
       >
-        {/* Background glow reflections */}
+        {/* Soft background ambient glows */}
         <div
           style={{
             position: "absolute",
-            top: "-10%",
+            top: "-15%",
             right: "5%",
-            width: "500px",
-            height: "500px",
-            background: "radial-gradient(circle, rgba(52, 211, 153, 0.15) 0%, transparent 70%)",
-            pointerEvents: "none",
-          }}
-        />
-        <div
-          style={{
-            position: "absolute",
-            bottom: "-10%",
-            left: "-5%",
-            width: "450px",
-            height: "450px",
-            background: "radial-gradient(circle, rgba(229, 192, 123, 0.12) 0%, transparent 70%)",
+            width: "400px",
+            height: "400px",
+            background: "radial-gradient(circle, rgba(39, 103, 73, 0.08) 0%, transparent 70%)",
             pointerEvents: "none",
           }}
         />
 
         <div style={{ maxWidth: "1280px", margin: "0 auto", position: "relative", zIndex: 2 }}>
-          <div style={{ maxWidth: "840px" }}>
-            {/* Cursive Decorative Subheading Tagline */}
-            <div style={{ marginBottom: "0.75rem" }}>
-              <span
-                style={{
-                  fontFamily: "'Dancing Script', cursive",
-                  fontSize: "clamp(1.6rem, 3.8vw, 2.5rem)",
-                  color: "#E5C07B",
-                  fontWeight: 700,
-                  letterSpacing: "0.5px",
-                  display: "block",
-                  lineHeight: 1.25,
-                  textShadow: "0 2px 10px rgba(0,0,0,0.3)",
-                }}
-              >
-                ✨ Protecting Communities, Preserving Wildlife & Mobilizing Emergency Action
+          <div style={{ maxWidth: "800px" }}>
+            {/* Script Tagline - Moderate Size */}
+            <div style={{ marginBottom: "0.5rem" }}>
+              <span className="hero-tagline-script" style={{ color: "var(--primary-green)" }}>
+                Protecting Communities, Preserving Wildlife & Mobilizing Response
               </span>
             </div>
 
@@ -80,40 +60,42 @@ export const LandingPage = () => {
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "0.5rem",
-                backgroundColor: "rgba(167, 196, 160, 0.15)",
-                border: "1px solid rgba(167, 196, 160, 0.3)",
-                color: "var(--sage)",
-                padding: "0.375rem 1rem",
+                backgroundColor: "#FFFFFF",
+                border: "1px solid rgba(39, 103, 73, 0.25)",
+                color: "var(--primary-green)",
+                padding: "0.3125rem 0.875rem",
                 borderRadius: "9999px",
-                fontSize: "0.8125rem",
+                fontSize: "0.78125rem",
                 fontWeight: 700,
-                marginBottom: "1.5rem",
-                letterSpacing: "0.05em",
+                marginBottom: "1.25rem",
+                letterSpacing: "0.04em",
                 textTransform: "uppercase",
+                boxShadow: "0 2px 6px rgba(0,0,0,0.03)",
               }}
             >
-              <Zap size={14} style={{ color: "#34D399" }} />
-              <span>Multi-Role Emergency & Rescue Response Platform</span>
+              <Zap size={14} style={{ color: "var(--primary-green)" }} />
+              <span>Multi-Role Emergency Response Platform</span>
             </div>
 
-            {/* Main Headline */}
+            {/* Main Headline - PROPORTIONED & SMALLER (Max 2.625rem) */}
             <h1
               style={{
-                fontSize: "clamp(2.5rem, 5.5vw, 4.25rem)",
-                lineHeight: 1.12,
-                color: "#FFFFFF",
-                marginBottom: "1.5rem",
-                fontFamily: "var(--font-heading)",
+                fontSize: "clamp(1.75rem, 3.2vw, 2.625rem)",
+                lineHeight: 1.2,
+                color: "var(--deep-forest)",
+                marginBottom: "1.125rem",
+                fontFamily: "'Outfit', sans-serif",
                 fontWeight: 800,
-                letterSpacing: "-0.02em",
+                letterSpacing: "-0.015em",
               }}
             >
               From Emergency Sightings to{" "}
               <span
                 style={{
-                  color: "#34D399",
-                  fontStyle: "italic",
+                  color: "var(--primary-green)",
                   fontFamily: "'Playfair Display', serif",
+                  fontStyle: "italic",
+                  fontWeight: 600,
                 }}
               >
                 Instant, Coordinated Response.
@@ -122,103 +104,100 @@ export const LandingPage = () => {
 
             <p
               style={{
-                fontSize: "1.25rem",
-                lineHeight: 1.65,
-                color: "rgba(255, 255, 255, 0.88)",
-                marginBottom: "2.25rem",
-                maxWidth: "740px",
+                fontSize: "1.0625rem",
+                lineHeight: 1.6,
+                color: "var(--muted-text)",
+                marginBottom: "1.75rem",
+                maxWidth: "680px",
               }}
             >
-              TheraPhylax connects Citizens, Forest Officers, and Animal Rescue NGOs in real-time. Report road accidents, injured wildlife, natural hazards, and spatial risks for swift action.
+              TheraPhylax connects Citizens, Forest Officers, and Emergency Responders in real-time. Log road accidents, injured wildlife, natural hazards, and spatial risks for swift action.
             </p>
 
-            {/* Call to Action Buttons - RISK ZONES REMOVED */}
-            <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", alignItems: "center" }}>
+            {/* Action Buttons */}
+            <div style={{ display: "flex", gap: "0.875rem", flexWrap: "wrap", alignItems: "center" }}>
               <Link to="/accidents/report">
                 <Button
                   variant="primary"
-                  size="lg"
+                  size="md"
                   icon={FilePlus}
                   style={{
                     backgroundColor: "#276749",
-                    backgroundImage: "linear-gradient(135deg, #276749 0%, #1B4D36 100%)",
-                    boxShadow: "0 6px 20px rgba(39, 103, 73, 0.5)",
-                    fontSize: "1.0625rem",
-                    padding: "0.875rem 1.75rem",
+                    boxShadow: "0 4px 12px rgba(39, 103, 73, 0.3)",
+                    padding: "0.75rem 1.5rem",
                   }}
                 >
-                  Report Incident / Accident Now
+                  Report Incident / Accident
                 </Button>
               </Link>
               <Link to="/login">
                 <Button
                   variant="outline"
-                  size="lg"
+                  size="md"
                   icon={ArrowRight}
                   style={{
-                    color: "#FFFFFF",
-                    borderColor: "rgba(255, 255, 255, 0.4)",
-                    backgroundColor: "rgba(255, 255, 255, 0.06)",
-                    fontSize: "1.0625rem",
-                    padding: "0.875rem 1.5rem",
+                    color: "var(--deep-forest)",
+                    borderColor: "rgba(39, 103, 73, 0.3)",
+                    backgroundColor: "#FFFFFF",
+                    padding: "0.75rem 1.375rem",
                   }}
                 >
-                  Sign In to Access Portal
+                  Sign In to Portal
                 </Button>
               </Link>
             </div>
           </div>
 
-          {/* Quick Stats Grid */}
+          {/* Quick Stats Grid - LIGHT SHADE CARDS */}
           <div
             style={{
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: "1.25rem",
-              marginTop: "4.5rem",
-              paddingTop: "2.5rem",
-              borderTop: "1px solid rgba(255, 255, 255, 0.12)",
+              gap: "1rem",
+              marginTop: "3.5rem",
+              paddingTop: "2rem",
+              borderTop: "1px solid rgba(39, 103, 73, 0.12)",
             }}
           >
             {[
-              { number: "112 & 108", label: "Verified Helplines Integrated", icon: PhoneCall, color: "#FCA5A5" },
-              { number: "Real-time", label: "Officer Geo-Alert Broadcasts", icon: Bell, color: "#FDE047" },
-              { number: "Automated", label: "Animal Rescue NGO Matching", icon: Heart, color: "#F472B6" },
-              { number: "AWS Cognito", label: "Role-Based Mumbai Cloud Auth", icon: Lock, color: "#34D399" },
+              { number: "112 & 108", label: "Verified Emergency Helplines", icon: PhoneCall, color: "#DC2626", bg: "#FEE2E2" },
+              { number: "Real-time", label: "Officer Geo-Alert Broadcasts", icon: Bell, color: "#D97706", bg: "#FEF3C7" },
+              { number: "Automated", label: "Forest Officer Station Tagging", icon: Shield, color: "#059669", bg: "#D1FAE5" },
+              { number: "AWS Cognito", label: "Role-Based Cloud Auth", icon: Lock, color: "#16A34A", bg: "#DCFCE7" },
             ].map((stat, i) => {
               const Icon = stat.icon;
               return (
                 <div
                   key={i}
                   style={{
-                    backgroundColor: "rgba(255, 255, 255, 0.06)",
-                    backdropFilter: "blur(10px)",
-                    border: "1px solid rgba(255, 255, 255, 0.1)",
-                    borderRadius: "16px",
-                    padding: "1.25rem 1.5rem",
+                    backgroundColor: "#FFFFFF",
+                    border: "1px solid rgba(39, 103, 73, 0.12)",
+                    borderRadius: "14px",
+                    padding: "1.125rem 1.25rem",
                     display: "flex",
                     alignItems: "center",
-                    gap: "1rem",
+                    gap: "0.875rem",
+                    boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
                   }}
                 >
                   <div
                     style={{
-                      width: "44px",
-                      height: "44px",
-                      borderRadius: "12px",
-                      backgroundColor: "rgba(255, 255, 255, 0.1)",
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "10px",
+                      backgroundColor: stat.bg,
                       display: "grid",
                       placeItems: "center",
                       color: stat.color,
                     }}
                   >
-                    <Icon size={22} />
+                    <Icon size={20} />
                   </div>
                   <div>
-                    <span style={{ fontSize: "1.25rem", fontWeight: 800, color: "#FFFFFF", display: "block" }}>
+                    <span style={{ fontSize: "1.125rem", fontWeight: 800, color: "var(--deep-forest)", display: "block" }}>
                       {stat.number}
                     </span>
-                    <span style={{ fontSize: "0.8125rem", color: "rgba(255, 255, 255, 0.75)", fontWeight: 500 }}>
+                    <span style={{ fontSize: "0.8125rem", color: "var(--muted-text)", fontWeight: 500 }}>
                       {stat.label}
                     </span>
                   </div>
@@ -230,62 +209,55 @@ export const LandingPage = () => {
       </section>
 
       {/* CORE PLATFORM CAPABILITIES */}
-      <section style={{ padding: "5.5rem 1.5rem", maxWidth: "1280px", margin: "0 auto" }}>
-        <div style={{ textAlign: "center", maxWidth: "720px", margin: "0 auto 3.5rem" }}>
-          <span
-            style={{
-              fontFamily: "'Dancing Script', cursive",
-              fontSize: "1.875rem",
-              color: "var(--primary-green)",
-              fontWeight: 700,
-              display: "block",
-              marginBottom: "0.5rem",
-            }}
-          >
-            ~ Unified Multi-Role Architecture ~
+      <section style={{ padding: "4.5rem 1.5rem", maxWidth: "1280px", margin: "0 auto" }}>
+        <div style={{ textAlign: "center", maxWidth: "680px", margin: "0 auto 3rem" }}>
+          <span style={{ fontSize: "0.8125rem", fontWeight: 700, color: "var(--primary-green)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: "0.375rem" }}>
+            UNIFIED MULTI-ROLE PLATFORM
           </span>
-          <h2 style={{ fontSize: "2.375rem", marginBottom: "1rem" }}>Tailored Portals for Every Stakeholder</h2>
-          <p className="text-muted" style={{ fontSize: "1.125rem", lineHeight: 1.6 }}>
-            Empowering citizens to report incidents, enabling forest officers to triage and issue geo-alerts, and connecting NGO personnel for swift animal rescue operations.
+          <h2 style={{ fontSize: "1.875rem", marginBottom: "0.75rem", fontFamily: "'Outfit', sans-serif" }}>
+            Tailored Portals for Every Stakeholder
+          </h2>
+          <p className="text-muted" style={{ fontSize: "1rem", lineHeight: 1.55 }}>
+            Empowering citizens to log hazards, enabling forest officers to triage and issue geo-alerts, and dispatching rapid response squads for wildlife and road emergencies.
           </p>
         </div>
 
-        <div className="grid-cols-3" style={{ gap: "2rem" }}>
+        <div className="grid-cols-3" style={{ gap: "1.75rem" }}>
           <Card
             className="card-hover"
             style={{
               borderTop: "4px solid var(--primary-green)",
               backgroundColor: "#FFFFFF",
-              padding: "2rem",
+              padding: "1.75rem",
             }}
           >
             <div
               style={{
-                width: "52px",
-                height: "52px",
-                borderRadius: "14px",
+                width: "48px",
+                height: "48px",
+                borderRadius: "12px",
                 backgroundColor: "var(--sage-light)",
                 color: "var(--primary-green)",
                 display: "grid",
                 placeItems: "center",
-                marginBottom: "1.25rem",
+                marginBottom: "1.125rem",
               }}
             >
-              <Users size={26} />
+              <Users size={24} />
             </div>
-            <h3 style={{ fontSize: "1.375rem", marginBottom: "0.625rem" }}>Citizen Portal</h3>
-            <p className="text-muted" style={{ fontSize: "0.9375rem", lineHeight: 1.6, marginBottom: "1.25rem" }}>
-              Report road accidents, injured animals, fires, or flooding with photo proof and GPS tagging. Track your status in real time.
+            <h3 style={{ fontSize: "1.25rem", marginBottom: "0.5rem", fontFamily: "'Outfit', sans-serif" }}>Citizen Portal</h3>
+            <p className="text-muted" style={{ fontSize: "0.875rem", lineHeight: 1.6, marginBottom: "1.125rem" }}>
+              Report road accidents, injured animals, fires, or flooding with photo proof and GPS tagging. Track status in real time.
             </p>
-            <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem", fontSize: "0.875rem" }}>
+            <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem", fontSize: "0.8125rem" }}>
               <li style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--charcoal)" }}>
-                <CheckCircle2 size={16} style={{ color: "var(--green-success)" }} /> Geotagged Incident Reporting
+                <CheckCircle2 size={15} style={{ color: "var(--green-success)" }} /> Geotagged Incident Reporting
               </li>
               <li style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--charcoal)" }}>
-                <CheckCircle2 size={16} style={{ color: "var(--green-success)" }} /> Automated NGO Rescue Request
+                <CheckCircle2 size={15} style={{ color: "var(--green-success)" }} /> Tag Forest Officers & Stations
               </li>
               <li style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--charcoal)" }}>
-                <CheckCircle2 size={16} style={{ color: "var(--green-success)" }} /> Live Status Tracking
+                <CheckCircle2 size={15} style={{ color: "var(--green-success)" }} /> Live Status Tracking
               </li>
             </ul>
           </Card>
@@ -295,36 +267,36 @@ export const LandingPage = () => {
             style={{
               borderTop: "4px solid var(--amber-warning)",
               backgroundColor: "#FFFFFF",
-              padding: "2rem",
+              padding: "1.75rem",
             }}
           >
             <div
               style={{
-                width: "52px",
-                height: "52px",
-                borderRadius: "14px",
+                width: "48px",
+                height: "48px",
+                borderRadius: "12px",
                 backgroundColor: "var(--amber-bg)",
                 color: "var(--amber-warning)",
                 display: "grid",
                 placeItems: "center",
-                marginBottom: "1.25rem",
+                marginBottom: "1.125rem",
               }}
             >
-              <Shield size={26} />
+              <Shield size={24} />
             </div>
-            <h3 style={{ fontSize: "1.375rem", marginBottom: "0.625rem" }}>Emergency Officer Command</h3>
-            <p className="text-muted" style={{ fontSize: "0.9375rem", lineHeight: 1.6, marginBottom: "1.25rem" }}>
-              Triage incoming reports, issue targeted radius geographic alerts, log internal notes, and publish low-severity community notices.
+            <h3 style={{ fontSize: "1.25rem", marginBottom: "0.5rem", fontFamily: "'Outfit', sans-serif" }}>Emergency Officer Command</h3>
+            <p className="text-muted" style={{ fontSize: "0.875rem", lineHeight: 1.6, marginBottom: "1.125rem" }}>
+              Triage incoming reports, issue targeted radius geographic alerts, log internal notes, and publish community notices.
             </p>
-            <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem", fontSize: "0.875rem" }}>
+            <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem", fontSize: "0.8125rem" }}>
               <li style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--charcoal)" }}>
-                <CheckCircle2 size={16} style={{ color: "var(--amber-warning)" }} /> Radius Geo-Targeted Broadcasting
+                <CheckCircle2 size={15} style={{ color: "var(--amber-warning)" }} /> Radius Geo-Targeted Broadcasting
               </li>
               <li style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--charcoal)" }}>
-                <CheckCircle2 size={16} style={{ color: "var(--amber-warning)" }} /> Priority Severity Triage
+                <CheckCircle2 size={15} style={{ color: "var(--amber-warning)" }} /> Priority Severity Triage
               </li>
               <li style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--charcoal)" }}>
-                <CheckCircle2 size={16} style={{ color: "var(--amber-warning)" }} /> Protected Internal Officer Notes
+                <CheckCircle2 size={15} style={{ color: "var(--amber-warning)" }} /> Protected Internal Notes
               </li>
             </ul>
           </Card>
@@ -332,38 +304,38 @@ export const LandingPage = () => {
           <Card
             className="card-hover"
             style={{
-              borderTop: "4px solid #EC4899",
+              borderTop: "4px solid #059669",
               backgroundColor: "#FFFFFF",
-              padding: "2rem",
+              padding: "1.75rem",
             }}
           >
             <div
               style={{
-                width: "52px",
-                height: "52px",
-                borderRadius: "14px",
-                backgroundColor: "#FCE7F3",
-                color: "#DB2777",
+                width: "48px",
+                height: "48px",
+                borderRadius: "12px",
+                backgroundColor: "#D1FAE5",
+                color: "#059669",
                 display: "grid",
                 placeItems: "center",
-                marginBottom: "1.25rem",
+                marginBottom: "1.125rem",
               }}
             >
-              <Heart size={26} />
+              <Compass size={24} />
             </div>
-            <h3 style={{ fontSize: "1.375rem", marginBottom: "0.625rem" }}>NGO Rescue Desk</h3>
-            <p className="text-muted" style={{ fontSize: "0.9375rem", lineHeight: 1.6, marginBottom: "1.25rem" }}>
-              Receive matched animal rescue requests based on service location and coverage. Accept or update dispatch states seamlessly.
+            <h3 style={{ fontSize: "1.25rem", marginBottom: "0.5rem", fontFamily: "'Outfit', sans-serif" }}>Forest Wildlife & RRT Patrol</h3>
+            <p className="text-muted" style={{ fontSize: "0.875rem", lineHeight: 1.6, marginBottom: "1.125rem" }}>
+              Receive geotagged wildlife conflict alerts, dispatch veterinary flying squads, and publish regional safety buffers.
             </p>
-            <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem", fontSize: "0.875rem" }}>
+            <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: "0.5rem", fontSize: "0.8125rem" }}>
               <li style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--charcoal)" }}>
-                <CheckCircle2 size={16} style={{ color: "#DB2777" }} /> Smart Location-Based Matching
+                <CheckCircle2 size={15} style={{ color: "#059669" }} /> Range & Station Direct Dispatch
               </li>
               <li style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--charcoal)" }}>
-                <CheckCircle2 size={16} style={{ color: "#DB2777" }} /> Accept / Decline Dispatch Workflow
+                <CheckCircle2 size={15} style={{ color: "#059669" }} /> Rapid Response Team (RRT) Mobilization
               </li>
               <li style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--charcoal)" }}>
-                <CheckCircle2 size={16} style={{ color: "#DB2777" }} /> Organization Profile & Availability
+                <CheckCircle2 size={15} style={{ color: "#059669" }} /> Geofenced Risk Field Broadcast
               </li>
             </ul>
           </Card>
@@ -371,47 +343,38 @@ export const LandingPage = () => {
       </section>
 
       {/* HOW IT OPERATES */}
-      <section style={{ backgroundColor: "#FFFFFF", padding: "5rem 1.5rem", borderTop: "1px solid var(--border-color)", borderBottom: "1px solid var(--border-color)" }}>
+      <section style={{ backgroundColor: "#FFFFFF", padding: "4rem 1.5rem", borderTop: "1px solid var(--border-color)", borderBottom: "1px solid var(--border-color)" }}>
         <div style={{ maxWidth: "1280px", margin: "0 auto" }}>
-          <div style={{ textAlign: "center", maxWidth: "700px", margin: "0 auto 3.5rem" }}>
-            <span
-              style={{
-                fontFamily: "'Dancing Script', cursive",
-                fontSize: "1.75rem",
-                color: "var(--primary-green)",
-                fontWeight: 700,
-                display: "block",
-                marginBottom: "0.375rem",
-              }}
-            >
-              ~ Seamless Response Workflow ~
+          <div style={{ textAlign: "center", maxWidth: "650px", margin: "0 auto 3rem" }}>
+            <span style={{ fontSize: "0.8125rem", fontWeight: 700, color: "var(--primary-green)", textTransform: "uppercase", letterSpacing: "0.08em", display: "block", marginBottom: "0.375rem" }}>
+              TRANSPARENT RESPONSE LIFECYCLE
             </span>
-            <h2 style={{ fontSize: "2.25rem", marginBottom: "1rem" }}>5-Stage Incident Lifecycle</h2>
-            <p className="text-muted" style={{ fontSize: "1.125rem" }}>
-              From initial citizen reporting to official dispatch and verified resolution.
+            <h2 style={{ fontSize: "1.875rem", marginBottom: "0.75rem", fontFamily: "'Outfit', sans-serif" }}>5-Stage Incident Process</h2>
+            <p className="text-muted" style={{ fontSize: "1rem" }}>
+              From initial citizen report to official verification, forest squad dispatch, and resolution.
             </p>
           </div>
 
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-              gap: "1.5rem",
+              gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))",
+              gap: "1.25rem",
             }}
           >
             {[
-              { step: "01", title: "Log Incident", desc: "Citizen or officer logs sighting with photo & map coordinates." },
+              { step: "01", title: "Log Incident", desc: "Citizen logs sighting with photo, map pin, & tags Forest Officers." },
               { step: "02", title: "Officer Triage", desc: "Forest officers verify severity level and evidence." },
-              { step: "03", title: "NGO Dispatch", desc: "System routes injured animal calls to qualified local NGOs." },
+              { step: "03", title: "Forest RRT Dispatch", desc: "System dispatches forest flying squads & rapid response units." },
               { step: "04", title: "Geo-Target Alert", desc: "Radius alerts broadcasted to citizens in high-risk zones." },
               { step: "05", title: "Case Closure", desc: "Responders record actions and mark incident resolved." },
             ].map((s) => (
-              <Card key={s.step} style={{ backgroundColor: "var(--bg-warm)", border: "1px solid var(--border-color)" }}>
-                <span style={{ fontSize: "1.75rem", fontFamily: "var(--font-heading)", fontWeight: 800, color: "var(--primary-green)", display: "block", marginBottom: "0.5rem" }}>
+              <Card key={s.step} style={{ backgroundColor: "var(--bg-warm)", border: "1px solid var(--border-color)", padding: "1.25rem" }}>
+                <span style={{ fontSize: "1.5rem", fontFamily: "'Outfit', sans-serif", fontWeight: 800, color: "var(--primary-green)", display: "block", marginBottom: "0.375rem" }}>
                   {s.step}
                 </span>
-                <h4 style={{ fontSize: "1.125rem", marginBottom: "0.375rem" }}>{s.title}</h4>
-                <p className="text-muted" style={{ fontSize: "0.875rem", lineHeight: 1.5 }}>
+                <h4 style={{ fontSize: "1.0625rem", marginBottom: "0.375rem", fontFamily: "'Outfit', sans-serif" }}>{s.title}</h4>
+                <p className="text-muted" style={{ fontSize: "0.8125rem", lineHeight: 1.5 }}>
                   {s.desc}
                 </p>
               </Card>
@@ -420,46 +383,38 @@ export const LandingPage = () => {
         </div>
       </section>
 
-      {/* FOOTER CTA */}
-      <section style={{ padding: "4.5rem 1.5rem", maxWidth: "1280px", margin: "0 auto" }}>
+      {/* LIGHT SHADE FOOTER CTA */}
+      <section style={{ padding: "4rem 1.5rem", maxWidth: "1280px", margin: "0 auto" }}>
         <Card
           style={{
-            background: "linear-gradient(135deg, #173D2D 0%, #0F2D20 100%)",
-            color: "#FFFFFF",
-            padding: "3.5rem 2.5rem",
-            borderRadius: "24px",
-            boxShadow: "0 20px 40px rgba(15, 45, 32, 0.3)",
+            background: "linear-gradient(135deg, #EBF4EF 0%, #DFECE5 100%)",
+            color: "var(--deep-forest)",
+            padding: "3rem 2.25rem",
+            borderRadius: "20px",
+            border: "1.5px solid rgba(39, 103, 73, 0.2)",
+            boxShadow: "0 10px 25px rgba(39, 103, 73, 0.08)",
           }}
         >
-          <div className="flex-between" style={{ flexWrap: "wrap", gap: "2rem" }}>
-            <div style={{ maxWidth: "680px" }}>
-              <span
-                style={{
-                  fontFamily: "'Dancing Script', cursive",
-                  fontSize: "1.875rem",
-                  color: "#E5C07B",
-                  fontWeight: 700,
-                  display: "block",
-                  marginBottom: "0.5rem",
-                }}
-              >
-                Join the Safety & Wildlife Network
+          <div className="flex-between" style={{ flexWrap: "wrap", gap: "1.75rem" }}>
+            <div style={{ maxWidth: "650px" }}>
+              <span className="hero-tagline-script" style={{ display: "block", marginBottom: "0.375rem" }}>
+                Join the Safety & Wildlife Protection Network
               </span>
-              <h3 style={{ fontSize: "2.125rem", color: "#FFFFFF", marginBottom: "0.75rem", fontWeight: 800 }}>
+              <h3 style={{ fontSize: "1.75rem", color: "var(--deep-forest)", marginBottom: "0.625rem", fontWeight: 800, fontFamily: "'Outfit', sans-serif" }}>
                 Ready to Protect Your Community?
               </h3>
-              <p style={{ color: "rgba(255,255,255,0.85)", fontSize: "1.0625rem", lineHeight: 1.6 }}>
-                TheraPhylax is backed by enterprise Amazon Cognito authentication in ap-south-1 (Mumbai), ensuring data privacy, role-based safety, and immediate emergency access.
+              <p style={{ color: "var(--muted-text)", fontSize: "1rem", lineHeight: 1.6 }}>
+                TheraPhylax is backed by Amazon Cognito authentication in AWS Mumbai (ap-south-1), ensuring role-based privacy, verified incident reporting, and immediate emergency access.
               </p>
             </div>
-            <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: "0.875rem", flexWrap: "wrap" }}>
               <Link to="/register">
-                <Button variant="primary" size="lg" style={{ backgroundColor: "#276749", padding: "0.875rem 1.75rem" }}>
+                <Button variant="primary" size="md" style={{ backgroundColor: "#276749", padding: "0.75rem 1.5rem" }}>
                   Create Free Account
                 </Button>
               </Link>
               <Link to="/accidents/report">
-                <Button variant="secondary" size="lg" style={{ padding: "0.875rem 1.75rem" }}>
+                <Button variant="outline" size="md" style={{ borderColor: "var(--primary-green)", color: "var(--primary-green)", backgroundColor: "#FFFFFF", padding: "0.75rem 1.5rem" }}>
                   Report an Incident
                 </Button>
               </Link>
