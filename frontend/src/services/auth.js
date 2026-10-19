@@ -84,7 +84,7 @@ export const authService = {
         try {
           const beRes = await apiRequest("/auth/login", {
             method: "POST",
-            body: JSON.stringify({ email, password, role: cognitoRole }),
+            body: JSON.stringify({ email, role: cognitoRole }),
           });
           if (beRes && beRes.user) {
             const isOfficer =
@@ -110,7 +110,7 @@ export const authService = {
         try {
           const apiRes = await apiRequest("/auth/login", {
             method: "POST",
-            body: JSON.stringify({ email, password }),
+            body: JSON.stringify({ email }),
           });
           const isOfficer =
             (apiRes.user?.role || "").toLowerCase() === "officer" ||
@@ -127,7 +127,7 @@ export const authService = {
     } else {
       const apiRes = await apiRequest("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email }),
       });
       const isOfficer =
         (apiRes.user?.role || "").toLowerCase() === "officer" ||
@@ -183,7 +183,7 @@ export const authService = {
     };
     localStorage.setItem("theraphylax_user", JSON.stringify(registeredUser));
 
-    // Always sync registered user and their location coordinates to backend database
+    // Always sync registered user and their location coordinates to backend database (DynamoDB)
     const syncBackendRegister = async () => {
       try {
         await apiRequest("/auth/register", {
@@ -191,7 +191,6 @@ export const authService = {
           body: JSON.stringify({
             name,
             email,
-            password,
             role,
             district,
             address,
@@ -263,7 +262,7 @@ export const authService = {
         }
       }
 
-      // Synchronize with local backend database
+      // Synchronize with backend DynamoDB database
       await syncBackendRegister();
 
       return {
@@ -280,7 +279,6 @@ export const authService = {
         body: JSON.stringify({
           name,
           email,
-          password,
           role,
           district,
           address,

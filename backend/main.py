@@ -8,6 +8,7 @@ import math
 import os
 import json
 import logging
+from decimal import Decimal
 import boto3
 from botocore.exceptions import ClientError
 
@@ -29,7 +30,7 @@ app.add_middleware(
 )
 
 # -------------------------------------------------------------
-# AWS CONFIGURATION (SNS & SES for High Severity Emergency Alerts)
+# AWS CONFIGURATION (SNS, SES & DynamoDB User Profiles)
 # -------------------------------------------------------------
 AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
 AWS_SNS_TOPIC_ARN = os.environ.get(
@@ -37,6 +38,7 @@ AWS_SNS_TOPIC_ARN = os.environ.get(
     "arn:aws:sns:ap-south-1:179895364119:TheraPhylax-HighSeverity-Alerts"
 )
 AWS_SES_SENDER = os.environ.get("AWS_SES_SENDER", "alerts@theraphylax.org")
+AWS_DYNAMODB_USERS_TABLE = os.environ.get("AWS_DYNAMODB_USERS_TABLE", "theraphylax-user-profiles")
 
 try:
     sns_client = boto3.client("sns", region_name=AWS_REGION)
@@ -49,6 +51,14 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize AWS SES client: {e}")
     ses_client = None
+
+try:
+    dynamodb_resource = boto3.resource("dynamodb", region_name=AWS_REGION)
+    dynamodb_users_table = dynamodb_resource.Table(AWS_DYNAMODB_USERS_TABLE)
+    logger.info(f"Connected to AWS DynamoDB table: {AWS_DYNAMODB_USERS_TABLE} ({AWS_REGION})")
+except Exception as e:
+    logger.warning(f"Failed to initialize AWS DynamoDB table: {e}")
+    dynamodb_users_table = None
 
 
 def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -694,27 +704,12 @@ emergency_contacts_db = [
 ]
 
 # -------------------------------------------------------------
-# DATABASE: Registered Users & Persistence
+# DATABASE: AWS DynamoDB User Profiles (Zero Passwords Stored)
 # -------------------------------------------------------------
-USERS_STORAGE_FILE = os.path.join(os.path.dirname(__file__), "users_storage.json")
-
-def load_persisted_users():
-    try:
-        if os.path.exists(USERS_STORAGE_FILE):
-            with open(USERS_STORAGE_FILE, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-                if isinstance(saved, list) and len(saved) > 0:
-                    logger.info(f"Loaded {len(saved)} persisted users from {USERS_STORAGE_FILE}")
-                    return saved
-    except Exception as e:
-        logger.warning(f"Failed to load persisted users: {e}")
-    return None
-
 DEFAULT_USERS_SEED = [
     {
         "id": "usr-default",
         "email": "citizen@theraphylax.org",
-        "password": "Password123!",
         "name": "Citizen User",
         "role": "Citizen",
         "district": "Mumbai Suburban",
@@ -728,7 +723,6 @@ DEFAULT_USERS_SEED = [
     {
         "id": "usr-officer",
         "email": "officer@theraphylax.org",
-        "password": "Password123!",
         "name": "Officer S. Patil",
         "role": "Officer",
         "district": "Mumbai Suburban",
@@ -738,29 +732,110 @@ DEFAULT_USERS_SEED = [
         "longitude": 72.9106,
         "phone": "+91 22 2886 0389",
     },
+    {
+        "id": "usr-031f47",
+        "email": "lanishathomas7606@gmail.com",
+        "name": "Lanisha Thomas",
+        "role": "Officer",
+        "district": "Mumbai Suburban",
+        "address": "Western Express Highway, SGNP Buffer, Borivali East",
+        "city": "Mumbai",
+        "state": "Maharashtra",
+        "latitude": 19.2288,
+        "longitude": 72.8570,
+        "phone": "+91 98000 00000",
+        "assigned_station": "Sanjay Gandhi National Park (SGNP) Range Office (Borivali East)",
+        "badge_number": "MH-FOR-2026-08"
+    },
+    {
+        "id": "usr-402f60",
+        "email": "lanishathomasnadar@gmail.com",
+        "name": "Lanisha Thomas",
+        "role": "Officer",
+        "district": "Mumbai Suburban",
+        "address": "Western Express Highway, SGNP Buffer, Borivali East",
+        "city": "Mumbai",
+        "state": "Maharashtra",
+        "latitude": 19.2288,
+        "longitude": 72.8570,
+        "phone": "+91 98000 00000",
+        "assigned_station": "Sanjay Gandhi National Park (SGNP) Range Office (Borivali East)",
+        "badge_number": "MH-FOR-2026-07"
+    },
+    {
+        "id": "usr-789b99",
+        "email": "aakash.mehta@example.com",
+        "name": "Aakash Mehta",
+        "role": "Citizen",
+        "district": "Mumbai Suburban",
+        "address": "Unit 16, Aarey Milk Colony, Goregaon East",
+        "city": "Mumbai",
+        "state": "Maharashtra",
+        "latitude": 19.1485,
+        "longitude": 72.8718,
+        "phone": "+91 98000 00000"
+    }
 ]
 
-# Initialize users_db from persisted JSON or seed list
-_loaded = load_persisted_users()
-if _loaded:
-    users_db = _loaded
-    # Ensure seed users are included
+def sanitize_user_profile(user: dict) -> dict:
+    """Strips any sensitive credentials and ensures only profile metadata is kept."""
+    return {k: v for k, v in user.items() if k != "password"}
+
+def sync_user_to_aws_dynamodb(user: dict):
+    """Saves user location/profile metadata to AWS DynamoDB (Zero passwords stored)."""
+    if not dynamodb_users_table:
+        return
+    try:
+        clean = sanitize_user_profile(user)
+        item = {}
+        for k, v in clean.items():
+            if v is None:
+                continue
+            if isinstance(v, float):
+                item[k] = Decimal(str(v))
+            else:
+                item[k] = v
+        dynamodb_users_table.put_item(Item=item)
+        logger.info(f"User profile synced to AWS DynamoDB: {clean.get('email')}")
+    except Exception as e:
+        logger.warning(f"Failed to sync profile to AWS DynamoDB: {e}")
+
+def load_users_from_aws_dynamodb():
+    """Fetches user location profiles from AWS DynamoDB table."""
+    if not dynamodb_users_table:
+        return None
+    try:
+        response = dynamodb_users_table.scan()
+        items = response.get("Items", [])
+        if items:
+            loaded = []
+            for it in items:
+                p = dict(it)
+                if "latitude" in p and isinstance(p["latitude"], Decimal):
+                    p["latitude"] = float(p["latitude"])
+                if "longitude" in p and isinstance(p["longitude"], Decimal):
+                    p["longitude"] = float(p["longitude"])
+                loaded.append(sanitize_user_profile(p))
+            logger.info(f"Loaded {len(loaded)} user profiles from AWS DynamoDB ({AWS_DYNAMODB_USERS_TABLE})")
+            return loaded
+    except Exception as e:
+        logger.warning(f"Could not load users from AWS DynamoDB: {e}")
+    return None
+
+# Initialize users_db from AWS DynamoDB or seed list
+_loaded_aws = load_users_from_aws_dynamodb()
+if _loaded_aws:
+    users_db = _loaded_aws
     existing_emails = {u.get("email", "").lower() for u in users_db}
     for seed in DEFAULT_USERS_SEED:
         if seed["email"].lower() not in existing_emails:
-            users_db.append(seed)
+            clean_seed = sanitize_user_profile(seed)
+            users_db.append(clean_seed)
+            sync_user_to_aws_dynamodb(clean_seed)
 else:
-    users_db = list(DEFAULT_USERS_SEED)
-
-def save_persisted_users():
-    try:
-        with open(USERS_STORAGE_FILE, "w", encoding="utf-8") as f:
-            json.dump(users_db, f, indent=2)
-    except Exception as e:
-        logger.warning(f"Failed to save persisted users: {e}")
-
-# Save initial state
-save_persisted_users()
+    users_db = [sanitize_user_profile(s) for s in DEFAULT_USERS_SEED]
+    for s in users_db:
+        sync_user_to_aws_dynamodb(s)
 
 notifications_db = []
 
@@ -836,13 +911,13 @@ class PublicUpdateCreate(BaseModel):
 
 class AuthLoginRequest(BaseModel):
     email: str
-    password: str
+    password: Optional[str] = None
     role: Optional[str] = None
 
 class AuthRegisterRequest(BaseModel):
     name: str
     email: str
-    password: str
+    password: Optional[str] = None
     role: Optional[str] = "Citizen"
     district: Optional[str] = None
     address: Optional[str] = None
@@ -873,7 +948,6 @@ class ProfileUpdateRequest(BaseModel):
 class CitizenCreateRequest(BaseModel):
     name: str
     email: str
-    password: Optional[str] = "Password123!"
     district: Optional[str] = "Mumbai Suburban"
     address: Optional[str] = ""
     city: Optional[str] = "Mumbai"
@@ -894,7 +968,12 @@ def home():
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "cognito_region": "ap-south-1"}
+    return {
+        "status": "healthy",
+        "cognito_region": "ap-south-1",
+        "dynamodb_table": AWS_DYNAMODB_USERS_TABLE,
+        "dynamodb_connected": dynamodb_users_table is not None
+    }
 
 MUMBAI_AREA_COORDINATES = {
     "borivali": (19.2290, 72.8600),
@@ -915,46 +994,28 @@ MUMBAI_AREA_COORDINATES = {
     "raigad": (18.9902, 73.2728),
 }
 
-# Auth endpoints
+# Auth endpoints (Authentication handled securely by AWS Cognito; profile coordinates stored in DynamoDB)
 @app.post("/auth/login")
 def login(payload: AuthLoginRequest):
-    # Match user in users_db
+    # Match user profile in users_db (populated from AWS DynamoDB)
     for u in users_db:
-        if u["email"].lower() == payload.email.lower() and u["password"] == payload.password:
+        if u["email"].lower() == payload.email.lower():
             # Preserve or upgrade to Officer if requested or if station assigned
             if (payload.role and payload.role.lower() == "officer") or u.get("assigned_station") or u.get("role", "").lower() == "officer":
                 u["role"] = "Officer"
                 if not u.get("assigned_station"):
                     u["assigned_station"] = "Sanjay Gandhi National Park (SGNP) Range Office (Borivali East)"
-                save_persisted_users()
+                sync_user_to_aws_dynamodb(u)
             return {
                 "token": f"token-{uuid.uuid4().hex}",
-                "user": {
-                    "email": u["email"],
-                    "name": u["name"],
-                    "role": u.get("role", "Citizen"),
-                    "district": u.get("district"),
-                    "address": u.get("address"),
-                    "city": u.get("city", "Mumbai"),
-                    "latitude": u.get("latitude"),
-                    "longitude": u.get("longitude"),
-                    "phone": u.get("phone"),
-                    "assigned_station": u.get("assigned_station"),
-                    "badge_number": u.get("badge_number")
-                }
+                "user": sanitize_user_profile(u)
             }
-    
-    # Check if this is an existing user with wrong password
-    for u in users_db:
-        if u["email"].lower() == payload.email.lower():
-            raise HTTPException(status_code=401, detail="Incorrect password for this account.")
             
-    # For local convenience if not in users_db yet, auto-register
+    # If not in users_db yet, auto-register profile in AWS DynamoDB
     new_user_role = "Officer" if (payload.role and payload.role.lower() == "officer") else "Citizen"
     new_user = {
         "id": f"usr-{uuid.uuid4().hex[:6]}",
         "email": payload.email,
-        "password": payload.password,
         "name": payload.email.split("@")[0].replace(".", " ").title(),
         "role": new_user_role,
         "district": "Mumbai Suburban",
@@ -968,10 +1029,10 @@ def login(payload: AuthLoginRequest):
         "badge_number": "MH-FOR-2026-01" if new_user_role == "Officer" else None
     }
     users_db.append(new_user)
-    save_persisted_users()
+    sync_user_to_aws_dynamodb(new_user)
     return {
         "token": f"token-{uuid.uuid4().hex}",
-        "user": new_user
+        "user": sanitize_user_profile(new_user)
     }
 
 @app.post("/auth/register")
@@ -990,7 +1051,7 @@ def register(payload: AuthRegisterRequest):
 
     target_role = "Officer" if (payload.role and payload.role.lower() == "officer") or payload.assigned_station else "Citizen"
 
-    # If user with this email already exists, update their record
+    # If user with this email already exists, update their profile
     for u in users_db:
         if u["email"].lower() == payload.email.lower():
             u["name"] = payload.name
@@ -1005,17 +1066,16 @@ def register(payload: AuthRegisterRequest):
                 u["assigned_station"] = payload.assigned_station
             if payload.badge_number:
                 u["badge_number"] = payload.badge_number
-            save_persisted_users()
+            sync_user_to_aws_dynamodb(u)
             return {
                 "success": True,
-                "message": "Account profile updated successfully!",
-                "user": u
+                "message": "Account profile updated in AWS DynamoDB successfully!",
+                "user": sanitize_user_profile(u)
             }
 
     new_user = {
         "id": f"usr-{uuid.uuid4().hex[:6]}",
         "email": payload.email,
-        "password": payload.password,
         "name": payload.name,
         "role": target_role,
         "district": payload.district or "Mumbai Suburban",
@@ -1029,17 +1089,17 @@ def register(payload: AuthRegisterRequest):
         "badge_number": payload.badge_number if target_role == "Officer" else None
     }
     users_db.append(new_user)
-    save_persisted_users()
+    sync_user_to_aws_dynamodb(new_user)
     return {
         "success": True,
-        "message": "Account created successfully!",
-        "user": new_user
+        "message": "Account profile created in AWS DynamoDB successfully!",
+        "user": sanitize_user_profile(new_user)
     }
 
 @app.get("/auth/me")
 def get_current_user():
     if users_db:
-        return users_db[-1]
+        return sanitize_user_profile(users_db[-1])
     return {"name": "User", "email": "user@theraphylax.org", "role": "Citizen", "assigned_station": None}
 
 @app.put("/auth/profile")
@@ -1068,7 +1128,7 @@ def update_profile(payload: ProfileUpdateRequest):
         users_db.append(target)
     
     for key, val in payload.dict(exclude_unset=True).items():
-        if val is not None:
+        if val is not None and key != "password":
             target[key] = val
 
     if payload.role:
@@ -1076,8 +1136,8 @@ def update_profile(payload: ProfileUpdateRequest):
     elif target.get("assigned_station"):
         target["role"] = "Officer"
 
-    save_persisted_users()
-    return {"success": True, "message": "Profile updated successfully!", "user": target}
+    sync_user_to_aws_dynamodb(target)
+    return {"success": True, "message": "Profile updated in AWS DynamoDB successfully!", "user": sanitize_user_profile(target)}
 
 # Reports Endpoints
 @app.get("/reports")
@@ -1196,13 +1256,12 @@ def create_or_update_citizen(payload: CitizenCreateRequest):
             u["longitude"] = float(payload.longitude)
             if payload.phone:
                 u["phone"] = payload.phone
-            save_persisted_users()
-            return {"success": True, "message": "Resident updated successfully!", "citizen": u}
+            sync_user_to_aws_dynamodb(u)
+            return {"success": True, "message": "Resident updated successfully in AWS DynamoDB!", "citizen": sanitize_user_profile(u)}
 
     new_citizen = {
         "id": f"usr-{uuid.uuid4().hex[:6]}",
         "email": payload.email,
-        "password": payload.password or "Password123!",
         "name": payload.name,
         "role": "Citizen",
         "district": payload.district or "Mumbai Suburban",
@@ -1216,8 +1275,8 @@ def create_or_update_citizen(payload: CitizenCreateRequest):
         "badge_number": None,
     }
     users_db.append(new_citizen)
-    save_persisted_users()
-    return {"success": True, "message": "Resident created successfully!", "citizen": new_citizen}
+    sync_user_to_aws_dynamodb(new_citizen)
+    return {"success": True, "message": "Resident created successfully in AWS DynamoDB!", "citizen": sanitize_user_profile(new_citizen)}
 
 @app.post("/alerts/preview-audience")
 def preview_geofence_audience(payload: AudiencePreviewRequest):

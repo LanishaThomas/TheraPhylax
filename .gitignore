@@ -5,6 +5,9 @@ backend/.venv/
 .env
 .env.*
 !.env.example
+backend/users_storage.json
+backend/*_storage.json
+*.json_storage
 
 # Node
 frontend/node_modules/
@@ -13,4 +16,4 @@ frontend/dist/
 # IDE and operating system
 .vscode/
 .DS_Store
-Thumbs.db
+Thumbs.db
