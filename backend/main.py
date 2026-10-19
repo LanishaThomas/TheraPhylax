@@ -39,6 +39,7 @@ AWS_SNS_TOPIC_ARN = os.environ.get(
 )
 AWS_SES_SENDER = os.environ.get("AWS_SES_SENDER", "alerts@theraphylax.org")
 AWS_DYNAMODB_USERS_TABLE = os.environ.get("AWS_DYNAMODB_USERS_TABLE", "theraphylax-user-profiles")
+AWS_COGNITO_USER_POOL_ID = os.environ.get("AWS_COGNITO_USER_POOL_ID", "ap-south-1_bYXlwb8fm")
 
 try:
     sns_client = boto3.client("sns", region_name=AWS_REGION)
@@ -59,6 +60,38 @@ try:
 except Exception as e:
     logger.warning(f"Failed to initialize AWS DynamoDB table: {e}")
     dynamodb_users_table = None
+
+try:
+    cognito_idp_client = boto3.client("cognito-idp", region_name=AWS_REGION)
+except Exception as e:
+    logger.warning(f"Failed to initialize AWS Cognito IDP client: {e}")
+    cognito_idp_client = None
+
+
+def assign_cognito_group(email: str, role: str):
+    """Assigns user to the appropriate AWS Cognito User Group ('Officers' or 'Citizens')."""
+    if not cognito_idp_client or not AWS_COGNITO_USER_POOL_ID or not email:
+        return
+    try:
+        group_name = "Officers" if (role or "").lower() == "officer" else "Citizens"
+        other_group = "Citizens" if group_name == "Officers" else "Officers"
+        cognito_idp_client.admin_add_user_to_group(
+            UserPoolId=AWS_COGNITO_USER_POOL_ID,
+            Username=email.strip(),
+            GroupName=group_name
+        )
+        logger.info(f"Assigned {email} to AWS Cognito User Group: {group_name}")
+        # Clean up opposite group if user switched roles
+        try:
+            cognito_idp_client.admin_remove_user_from_group(
+                UserPoolId=AWS_COGNITO_USER_POOL_ID,
+                Username=email.strip(),
+                GroupName=other_group
+            )
+        except Exception:
+            pass
+    except Exception as e:
+        logger.debug(f"Cognito group assignment note for {email}: {e}")
 
 
 def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -1006,6 +1039,7 @@ def login(payload: AuthLoginRequest):
                 if not u.get("assigned_station"):
                     u["assigned_station"] = "Sanjay Gandhi National Park (SGNP) Range Office (Borivali East)"
                 sync_user_to_aws_dynamodb(u)
+            assign_cognito_group(u["email"], u.get("role", "Citizen"))
             return {
                 "token": f"token-{uuid.uuid4().hex}",
                 "user": sanitize_user_profile(u)
@@ -1030,6 +1064,7 @@ def login(payload: AuthLoginRequest):
     }
     users_db.append(new_user)
     sync_user_to_aws_dynamodb(new_user)
+    assign_cognito_group(new_user["email"], new_user_role)
     return {
         "token": f"token-{uuid.uuid4().hex}",
         "user": sanitize_user_profile(new_user)
@@ -1067,6 +1102,7 @@ def register(payload: AuthRegisterRequest):
             if payload.badge_number:
                 u["badge_number"] = payload.badge_number
             sync_user_to_aws_dynamodb(u)
+            assign_cognito_group(u["email"], target_role)
             return {
                 "success": True,
                 "message": "Account profile updated in AWS DynamoDB successfully!",
@@ -1090,6 +1126,7 @@ def register(payload: AuthRegisterRequest):
     }
     users_db.append(new_user)
     sync_user_to_aws_dynamodb(new_user)
+    assign_cognito_group(new_user["email"], target_role)
     return {
         "success": True,
         "message": "Account profile created in AWS DynamoDB successfully!",
@@ -1137,6 +1174,7 @@ def update_profile(payload: ProfileUpdateRequest):
         target["role"] = "Officer"
 
     sync_user_to_aws_dynamodb(target)
+    assign_cognito_group(target["email"], target.get("role", "Citizen"))
     return {"success": True, "message": "Profile updated in AWS DynamoDB successfully!", "user": sanitize_user_profile(target)}
 
 # Reports Endpoints

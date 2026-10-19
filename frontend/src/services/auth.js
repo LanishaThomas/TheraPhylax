@@ -71,12 +71,18 @@ export const authService = {
           payload = { email };
         }
 
-        let cognitoRole = payload["custom:role"] || payload.role;
+        const groups = Array.isArray(payload["cognito:groups"]) ? payload["cognito:groups"] : [];
+        const isOfficerGroup = groups.some((g) => g.toLowerCase() === "officers" || g.toLowerCase() === "officer");
+        const isCitizenGroup = groups.some((g) => g.toLowerCase() === "citizens" || g.toLowerCase() === "citizen");
+        const groupRole = isOfficerGroup ? "Officer" : (isCitizenGroup ? "Citizen" : null);
+
+        let cognitoRole = groupRole || payload["custom:role"] || payload.role;
 
         let user = {
           email: payload.email || email,
           name: payload.name || payload.given_name || email.split("@")[0],
           role: cognitoRole || "Citizen",
+          groups: groups.length > 0 ? groups : [cognitoRole === "Officer" ? "Officers" : "Citizens"],
           sub: payload.sub,
         };
 

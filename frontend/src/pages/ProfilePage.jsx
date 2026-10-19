@@ -962,6 +962,18 @@ export const ProfilePage = () => {
               </div>
               <Shield size={20} style={{ color: "var(--primary-green)" }} />
             </div>
+
+            {cognitoActive && (
+              <div className="flex-between" style={{ borderTop: "1px solid var(--border-color)", paddingTop: "1rem" }}>
+                <div>
+                  <strong>AWS Cognito User Group:</strong>
+                  <div className="text-muted">
+                    {user?.groups?.length ? user.groups.join(", ") : (role === "Officer" ? "Officers" : "Citizens")}
+                  </div>
+                </div>
+                <Badge variant="in_progress">{user?.groups?.[0] || (role === "Officer" ? "Officers" : "Citizens")}</Badge>
+              </div>
+            )}
           </div>
         </Card>
 
