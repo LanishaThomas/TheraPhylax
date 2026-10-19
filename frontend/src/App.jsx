@@ -21,6 +21,7 @@ import { ReportsPage } from "./pages/ReportsPage";
 import { MyReportsPage } from "./pages/MyReportsPage";
 import { ReportDetailsPage } from "./pages/ReportDetailsPage";
 import { AlertsPage } from "./pages/AlertsPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { CreateGeographicAlertPage } from "./pages/CreateGeographicAlertPage";
 import { CreatePublicUpdatePage } from "./pages/CreatePublicUpdatePage";
@@ -74,9 +75,12 @@ function App() {
             <Route path="/updates/new" element={<RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}><CreatePublicUpdatePage /></RoleGuard>} />
             <Route path="/officer/updates/create" element={<RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}><CreatePublicUpdatePage /></RoleGuard>} />
 
-            {/* Alerts */}
+            {/* Alerts & Notifications */}
             <Route path="/alerts" element={<AlertsPage />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/officer/alerts/create" element={<RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}><CreateGeographicAlertPage /></RoleGuard>} />
+            <Route path="/alerts/create-geographic" element={<RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}><CreateGeographicAlertPage /></RoleGuard>} />
+            <Route path="/officer/geofence" element={<RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}><CreateGeographicAlertPage /></RoleGuard>} />
 
             {/* News & Profile */}
             <Route path="/news" element={<NewsPage />} />

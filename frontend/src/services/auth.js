@@ -71,12 +71,33 @@ export const authService = {
           payload = { email };
         }
 
-        const user = {
+        let cognitoRole = payload["custom:role"] || payload.role;
+
+        let user = {
           email: payload.email || email,
           name: payload.name || payload.given_name || email.split("@")[0],
-          role: payload["custom:role"] || payload.role || "Citizen",
+          role: cognitoRole || "Citizen",
           sub: payload.sub,
         };
+
+        // Also sync with backend users_db to fetch saved coordinates & ensure presence
+        try {
+          const beRes = await apiRequest("/auth/login", {
+            method: "POST",
+            body: JSON.stringify({ email, password, role: cognitoRole }),
+          });
+          if (beRes && beRes.user) {
+            const isOfficer =
+              (cognitoRole || "").toLowerCase() === "officer" ||
+              (beRes.user.role || "").toLowerCase() === "officer" ||
+              Boolean(beRes.user.assigned_station);
+
+            const finalRole = isOfficer ? "Officer" : (beRes.user.role || cognitoRole || "Citizen");
+            user = { ...user, ...beRes.user, role: finalRole };
+          }
+        } catch {
+          // ignore if backend offline
+        }
 
         localStorage.setItem("theraphylax_auth_token", idToken);
         localStorage.setItem("theraphylax_access_token", accessToken);
@@ -91,7 +112,11 @@ export const authService = {
             method: "POST",
             body: JSON.stringify({ email, password }),
           });
-          const user = apiRes.user || { email, name: email.split("@")[0], role: "Citizen" };
+          const isOfficer =
+            (apiRes.user?.role || "").toLowerCase() === "officer" ||
+            Boolean(apiRes.user?.assigned_station);
+          const finalRole = isOfficer ? "Officer" : (apiRes.user?.role || "Citizen");
+          const user = { ...(apiRes.user || {}), email, name: apiRes.user?.name || email.split("@")[0], role: finalRole };
           localStorage.setItem("theraphylax_auth_token", apiRes.token || apiRes.access_token);
           localStorage.setItem("theraphylax_user", JSON.stringify(user));
           return { user, token: apiRes.token, redirectPath: getRedirectPathForRole(user.role) };
@@ -104,14 +129,32 @@ export const authService = {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      const user = apiRes.user || { email, name: email.split("@")[0], role: "Citizen" };
+      const isOfficer =
+        (apiRes.user?.role || "").toLowerCase() === "officer" ||
+        Boolean(apiRes.user?.assigned_station);
+      const finalRole = isOfficer ? "Officer" : (apiRes.user?.role || "Citizen");
+      const user = { ...(apiRes.user || {}), email, name: apiRes.user?.name || email.split("@")[0], role: finalRole };
       localStorage.setItem("theraphylax_auth_token", apiRes.token || apiRes.access_token);
       localStorage.setItem("theraphylax_user", JSON.stringify(user));
       return { user, token: apiRes.token, redirectPath: getRedirectPathForRole(user.role) };
     }
   },
 
-  register: async ({ name, email, password, role = "Citizen", district = null, assigned_station = null, badge_number = null }) => {
+  register: async ({
+    name,
+    email,
+    password,
+    role = "Citizen",
+    district = null,
+    address = null,
+    city = "Mumbai",
+    state = "Maharashtra",
+    phone = null,
+    latitude = null,
+    longitude = null,
+    assigned_station = null,
+    badge_number = null,
+  }) => {
     if (!name || !email || !password) {
       throw new Error("All fields are required.");
     }
@@ -123,16 +166,48 @@ export const authService = {
       throw new Error("Password must contain uppercase, lowercase, numbers, and special symbols.");
     }
 
-    // Cache officer details locally so they persist regardless of auth provider
+    // Cache user details locally so they persist regardless of auth provider
     const registeredUser = {
       name,
       email,
       role: role || "Citizen",
       district,
+      address,
+      city,
+      state,
+      phone,
+      latitude: latitude ? parseFloat(latitude) : undefined,
+      longitude: longitude ? parseFloat(longitude) : undefined,
       assigned_station,
       badge_number,
     };
     localStorage.setItem("theraphylax_user", JSON.stringify(registeredUser));
+
+    // Always sync registered user and their location coordinates to backend database
+    const syncBackendRegister = async () => {
+      try {
+        await apiRequest("/auth/register", {
+          method: "POST",
+          body: JSON.stringify({
+            name,
+            email,
+            password,
+            role,
+            district,
+            address,
+            city,
+            state,
+            phone,
+            latitude: latitude ? parseFloat(latitude) : undefined,
+            longitude: longitude ? parseFloat(longitude) : undefined,
+            assigned_station,
+            badge_number,
+          }),
+        });
+      } catch (err) {
+        console.warn("Backend API registration sync notice:", err);
+      }
+    };
 
     if (isCognitoConfigured()) {
       let userAttrs = [
@@ -179,13 +254,17 @@ export const authService = {
 
       if (!response.ok) {
         if (data.__type?.includes("UsernameExistsException")) {
-          throw new Error("An account with this email address already exists.");
+          await syncBackendRegister();
+          throw new Error("An account with this email address already exists. Its location details have been updated in TheraPhylax.");
         } else if (data.__type?.includes("InvalidPasswordException")) {
           throw new Error("Password does not meet AWS Cognito security requirements.");
         } else {
           throw new Error(data.message || "Registration failed.");
         }
       }
+
+      // Synchronize with local backend database
+      await syncBackendRegister();
 
       return {
         success: true,
@@ -198,7 +277,21 @@ export const authService = {
     } else {
       return apiRequest("/auth/register", {
         method: "POST",
-        body: JSON.stringify({ name, email, password, role, district, assigned_station, badge_number }),
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          role,
+          district,
+          address,
+          city,
+          state,
+          phone,
+          latitude: latitude ? parseFloat(latitude) : undefined,
+          longitude: longitude ? parseFloat(longitude) : undefined,
+          assigned_station,
+          badge_number,
+        }),
       });
     }
   },

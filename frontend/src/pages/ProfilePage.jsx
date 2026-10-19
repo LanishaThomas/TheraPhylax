@@ -57,8 +57,14 @@ export const ProfilePage = () => {
   const [phone, setPhone] = useState(user?.phone || "");
 
   // Officer & Forest Station States
-  const userRole = (role || user?.role || "Citizen").toLowerCase();
-  const isOfficer = userRole === "officer" || userRole === "responder";
+  const initialRole =
+    (role || user?.role || "").toLowerCase() === "officer" ||
+    (role || user?.role || "").toLowerCase() === "responder" ||
+    Boolean(user?.assigned_station)
+      ? "Officer"
+      : "Citizen";
+  const [accountRole, setAccountRole] = useState(initialRole);
+  const isOfficer = accountRole === "Officer";
 
   const MUMBAI_DISTRICTS = [
     "Mumbai Suburban", "Mumbai City", "Thane", "Navi Mumbai", "Palghar", "Raigad"
@@ -416,18 +422,20 @@ export const ProfilePage = () => {
     setError("");
 
     const updatedProfile = {
+      email: user?.email,
       name,
+      role: accountRole,
       phone,
       address,
       city,
       state,
       pincode,
-      latitude,
-      longitude,
+      latitude: latitude ? parseFloat(latitude) : undefined,
+      longitude: longitude ? parseFloat(longitude) : undefined,
       location_name: address || `${city}, ${state}`,
-      district: isOfficer ? district : undefined,
-      assigned_station: assignedStation,
-      badge_number: badgeNumber,
+      district: district || (isOfficer ? "Mumbai Suburban" : undefined),
+      assigned_station: isOfficer ? assignedStation : undefined,
+      badge_number: isOfficer ? badgeNumber : undefined,
     };
 
     try {
@@ -509,6 +517,62 @@ export const ProfilePage = () => {
 
         {msg && <AlertMessage type="success" message={msg} />}
         {error && <AlertMessage type="error" message={error} />}
+        {/* ACCOUNT AUTHORIZATION ROLE SELECTOR */}
+        <Card style={{ padding: "1.25rem 1.5rem" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+            <div>
+              <strong style={{ fontSize: "0.9375rem", color: "var(--charcoal)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Shield size={18} style={{ color: "var(--primary-green)" }} />
+                Account Authorization Type:
+              </strong>
+              <p style={{ margin: "0.25rem 0 0", fontSize: "0.8125rem", color: "var(--text-muted)" }}>
+                Currently active as: <strong style={{ color: isOfficer ? "#059669" : "var(--charcoal)" }}>{accountRole}</strong>. Switch below to activate officer commands or resident mode.
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button
+                type="button"
+                onClick={() => setAccountRole("Citizen")}
+                style={{
+                  padding: "0.5rem 1rem",
+                  borderRadius: "8px",
+                  fontSize: "0.8125rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  border: accountRole === "Citizen" ? "2px solid var(--primary-green)" : "1px solid var(--border-color)",
+                  backgroundColor: accountRole === "Citizen" ? "var(--sage-light)" : "#FFFFFF",
+                  color: accountRole === "Citizen" ? "var(--primary-green)" : "var(--charcoal)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.375rem",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <User size={15} /> Citizen Account
+              </button>
+              <button
+                type="button"
+                onClick={() => setAccountRole("Officer")}
+                style={{
+                  padding: "0.5rem 1rem",
+                  borderRadius: "8px",
+                  fontSize: "0.8125rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  border: accountRole === "Officer" ? "2px solid #059669" : "1px solid var(--border-color)",
+                  backgroundColor: accountRole === "Officer" ? "#ECFDF5" : "#FFFFFF",
+                  color: accountRole === "Officer" ? "#059669" : "var(--charcoal)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.375rem",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <Radio size={15} /> Forest Officer Command
+              </button>
+            </div>
+          </div>
+        </Card>
 
         {/* PERSONAL DETAILS & LOCATION FORM */}
         <form onSubmit={handleSaveProfile} style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>

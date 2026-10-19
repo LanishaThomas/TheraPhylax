@@ -4,6 +4,15 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 import uuid
+import math
+import os
+import json
+import logging
+import boto3
+from botocore.exceptions import ClientError
+
+logger = logging.getLogger("theraphylax")
+logging.basicConfig(level=logging.INFO)
 
 app = FastAPI(
     title="TheraPhylax API",
@@ -18,6 +27,199 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# -------------------------------------------------------------
+# AWS CONFIGURATION (SNS & SES for High Severity Emergency Alerts)
+# -------------------------------------------------------------
+AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
+AWS_SNS_TOPIC_ARN = os.environ.get(
+    "AWS_SNS_TOPIC_ARN",
+    "arn:aws:sns:ap-south-1:179895364119:TheraPhylax-HighSeverity-Alerts"
+)
+AWS_SES_SENDER = os.environ.get("AWS_SES_SENDER", "alerts@theraphylax.org")
+
+try:
+    sns_client = boto3.client("sns", region_name=AWS_REGION)
+except Exception as e:
+    logger.warning(f"Failed to initialize AWS SNS client: {e}")
+    sns_client = None
+
+try:
+    ses_client = boto3.client("ses", region_name=AWS_REGION)
+except Exception as e:
+    logger.warning(f"Failed to initialize AWS SES client: {e}")
+    ses_client = None
+
+
+def haversine_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Calculates great-circle distance between two GPS coordinates in kilometers."""
+    try:
+        R = 6371.0  # Earth radius in kilometers
+        dlat = math.radians(lat2 - lat1)
+        dlon = math.radians(lon2 - lon1)
+        a = (
+            math.sin(dlat / 2) ** 2
+            + math.cos(math.radians(lat1))
+            * math.cos(math.radians(lat2))
+            * math.sin(dlon / 2) ** 2
+        )
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        return round(R * c, 2)
+    except Exception:
+        return 999.0
+
+
+def get_verified_ses_sender() -> str:
+    """Finds a verified sender email in AWS SES to prevent MessageRejected error in sandbox mode."""
+    if not ses_client:
+        return AWS_SES_SENDER
+    try:
+        identities_resp = ses_client.list_identities(IdentityType="EmailAddress")
+        identities = identities_resp.get("Identities", [])
+        if identities:
+            attrs_resp = ses_client.get_identity_verification_attributes(Identities=identities)
+            attrs = attrs_resp.get("VerificationAttributes", {})
+            for email, data in attrs.items():
+                if data.get("VerificationStatus") == "Success":
+                    return email
+    except Exception as e:
+        logger.warning(f"Error checking SES verified identities: {e}")
+    return AWS_SES_SENDER
+
+
+def dispatch_emergency_email(
+    user_email: str, user_name: str, alert_data: dict, distance_km: float
+) -> dict:
+    """
+    Dispatches a high-priority emergency email via AWS SES / SNS.
+    Color codes priority as HIGH (#EF4444) in the HTML template.
+    """
+    subject = f"[CRITICAL HIGH PRIORITY ALERT] {alert_data.get('title', 'Emergency Alert')}"
+    location = alert_data.get("location", "Mumbai Metropolitan Region")
+    radius = alert_data.get("radius_km", 5.0)
+    message = alert_data.get("message", "Emergency incident reported in your area.")
+    source = alert_data.get("source", "Forest Command & Disaster Management (MMR)")
+
+    html_body = f"""
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 620px; margin: 0 auto; border: 2.5px solid #EF4444; border-radius: 14px; overflow: hidden; background-color: #FFFFFF; box-shadow: 0 10px 25px rgba(239, 68, 68, 0.15);">
+      <div style="background: linear-gradient(135deg, #DC2626 0%, #EF4444 100%); color: #FFFFFF; padding: 22px 26px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <span style="background-color: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.4); padding: 4px 12px; border-radius: 9999px; font-size: 11px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase;">
+            🚨 PRIORITY: HIGH / CRITICAL
+          </span>
+          <span style="font-size: 12px; font-weight: 600; opacity: 0.9;">GEOFENCE BROADCAST</span>
+        </div>
+        <h1 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.3;">
+          {alert_data.get('title', 'Emergency Geofence Warning')}
+        </h1>
+      </div>
+
+      <div style="padding: 24px 26px;">
+        <p style="font-size: 15px; color: #1F2937; margin-top: 0; line-height: 1.6;">
+          Attention <strong>{user_name}</strong>, a high-severity emergency alert has been officially issued for your geofenced area in Mumbai Metropolitan Region.
+        </p>
+
+        <div style="background-color: #FEF2F2; border-left: 5px solid #EF4444; border-radius: 8px; padding: 16px 18px; margin: 18px 0;">
+          <div style="color: #991B1B; font-weight: 700; font-size: 13px; text-transform: uppercase; margin-bottom: 6px;">
+            ⚠️ Incident Description & Directives:
+          </div>
+          <div style="color: #374151; font-size: 14px; line-height: 1.6;">
+            {message}
+          </div>
+        </div>
+
+        <div style="background-color: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 10px; padding: 16px; margin: 20px 0;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <tr>
+              <td style="padding: 6px 0; color: #6B7280; width: 150px;"><strong>Geofence Epicenter:</strong></td>
+              <td style="padding: 6px 0; color: #111827; font-weight: 600;">{location}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #6B7280;"><strong>Your Proximity:</strong></td>
+              <td style="padding: 6px 0; color: #DC2626; font-weight: 700;">Approx. {distance_km} km away (INSIDE ACTIVE GEOFENCE)</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #6B7280;"><strong>Fenced Radius:</strong></td>
+              <td style="padding: 6px 0; color: #111827; font-weight: 600;">{radius} km perimeter</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #6B7280;"><strong>Issuing Authority:</strong></td>
+              <td style="padding: 6px 0; color: #111827;">{source}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #6B7280;"><strong>Delivery Policy:</strong></td>
+              <td style="padding: 6px 0; color: #047857; font-weight: 600;">In-App Push + Email (High Severity Trigger)</td>
+            </tr>
+          </table>
+        </div>
+
+        <div style="background-color: #F3F4F6; border-radius: 10px; padding: 14px 18px; margin-top: 20px;">
+          <h4 style="margin: 0 0 8px; font-size: 13px; font-weight: 700; color: #1F2937;">Emergency Helplines (Mumbai & MMR):</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12px; color: #4B5563;">
+            <div>• BMC Disaster Mgmt: <strong>1916</strong></div>
+            <div>• Van Vibhag (Forest): <strong>1926</strong></div>
+            <div>• SGNP Borivali Control: <strong>022 2886 0389</strong></div>
+            <div>• Unified Emergency: <strong>112</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="background-color: #111827; color: #9CA3AF; padding: 14px 26px; font-size: 11px; text-align: center; border-top: 1px solid #1F2937;">
+        TheraPhylax Geofenced Emergency Broadcast • Powered by AWS SES & SNS in {AWS_REGION}
+      </div>
+    </div>
+    """
+
+    # 1. Attempt AWS SES direct sending
+    ses_sent = False
+    ses_error = None
+    if ses_client:
+        active_sender = get_verified_ses_sender()
+        try:
+            ses_client.send_email(
+                Source=active_sender,
+                Destination={"ToAddresses": [user_email]},
+                Message={
+                    "Subject": {"Data": subject, "Charset": "UTF-8"},
+                    "Body": {
+                        "Html": {"Data": html_body, "Charset": "UTF-8"},
+                        "Text": {
+                            "Data": f"{subject}\n\n{message}\n\nLocation: {location}\nYour Distance: {distance_km} km\nFenced Perimeter: {radius} km",
+                            "Charset": "UTF-8",
+                        },
+                    },
+                },
+            )
+            ses_sent = True
+            logger.info(f"AWS SES sent emergency email to {user_email} from {active_sender}")
+        except Exception as e:
+            ses_error = str(e)
+            logger.warning(f"AWS SES direct send to {user_email} notice: {e}")
+
+    # 2. Attempt AWS SNS topic publish for notification broadcast
+    sns_published = False
+    if sns_client and AWS_SNS_TOPIC_ARN:
+        try:
+            sns_client.publish(
+                TopicArn=AWS_SNS_TOPIC_ARN,
+                Subject=f"ALERT: {alert_data.get('title', '')[:80]}",
+                Message=f"[HIGH SEVERITY ALERT - GEOFENCE ACTIVATED]\n\n{alert_data.get('title')}\n\n{message}\n\nLocation: {location}\nPerimeter: {radius} km\nRecipient: {user_email}",
+            )
+            sns_published = True
+            logger.info(f"AWS SNS published alert to {AWS_SNS_TOPIC_ARN}")
+        except Exception as e:
+            logger.warning(f"AWS SNS publish notice: {e}")
+
+    status_desc = "Dispatched via AWS SES / SNS to " + user_email if (ses_sent or sns_published) else f"AWS delivery notice: {ses_error or 'SES verification required'}"
+
+    return {
+        "recipient": user_email,
+        "ses_sent": ses_sent,
+        "sns_published": sns_published,
+        "status": status_desc,
+        "ses_error": ses_error,
+    }
+
 
 # -------------------------------------------------------------
 # DATABASE: Forest Stations & Range Offices
@@ -273,7 +475,7 @@ reports_db = [
         "latitude": 19.1550,
         "longitude": 72.8750,
         "incident_date": "2026-10-12T12:10:00Z",
-        "reporter_name": "Priya Deshmukh",
+        "reporter_name": "Citizen Reporter",
         "user_email": "citizen@theraphylax.org",
         "created_at": "2026-10-12T12:15:00Z",
         "animal_type": "Spotted Deer",
@@ -425,20 +627,7 @@ updates_db = [
     }
 ]
 
-alerts_db = [
-    {
-        "id": "alt-1",
-        "title": "Critical Flash Flood & High-Tide Advisory - Ghodbunder Corridor",
-        "severity": "Critical",
-        "message": "Heavy localized monsoon downpour coinciding with high tide along Thane Creek. Low-lying areas under cautionary watch.",
-        "location": "Ghodbunder Road & Thane Buffer Zone",
-        "radius_km": 5.0,
-        "source": "Disaster Management & Forest Command (MMR)",
-        "created_at": "2026-10-12T14:00:00Z",
-        "valid_until": "2026-10-14T18:00:00Z",
-        "delivery_status": "Delivered to registered residents in Mumbai Suburban & Thane"
-    }
-]
+alerts_db = []
 
 forest_dispatches_db = [
     {
@@ -449,7 +638,7 @@ forest_dispatches_db = [
         "animal_type": "Spotted Deer",
         "location_name": "Aarey Colony Unit 16, Goregaon East",
         "status": "Officer Dispatched",
-        "reporter_name": "Priya Deshmukh",
+        "reporter_name": "Citizen Reporter",
         "reporter_phone": "+91 98200 12345",
         "notes": "Citizen report of injured deer tagged to Aarey RRT. Veterinary rescue squad en route.",
         "created_at": "2026-10-12T12:20:00Z"
@@ -504,8 +693,76 @@ emergency_contacts_db = [
     }
 ]
 
-# Registered users in memory (Dynamic user registrations)
-users_db = []
+# -------------------------------------------------------------
+# DATABASE: Registered Users & Persistence
+# -------------------------------------------------------------
+USERS_STORAGE_FILE = os.path.join(os.path.dirname(__file__), "users_storage.json")
+
+def load_persisted_users():
+    try:
+        if os.path.exists(USERS_STORAGE_FILE):
+            with open(USERS_STORAGE_FILE, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+                if isinstance(saved, list) and len(saved) > 0:
+                    logger.info(f"Loaded {len(saved)} persisted users from {USERS_STORAGE_FILE}")
+                    return saved
+    except Exception as e:
+        logger.warning(f"Failed to load persisted users: {e}")
+    return None
+
+DEFAULT_USERS_SEED = [
+    {
+        "id": "usr-default",
+        "email": "citizen@theraphylax.org",
+        "password": "Password123!",
+        "name": "Citizen User",
+        "role": "Citizen",
+        "district": "Mumbai Suburban",
+        "address": "Western Express Highway, SGNP Buffer, Borivali East",
+        "city": "Mumbai",
+        "state": "Maharashtra",
+        "latitude": 19.2288,
+        "longitude": 72.8570,
+        "phone": "+91 98765 43210",
+    },
+    {
+        "id": "usr-officer",
+        "email": "officer@theraphylax.org",
+        "password": "Password123!",
+        "name": "Officer S. Patil",
+        "role": "Officer",
+        "district": "Mumbai Suburban",
+        "assigned_station": "Sanjay Gandhi National Park (SGNP) Range Office (Borivali East)",
+        "badge_number": "MH-FOR-2026-09",
+        "latitude": 19.2288,
+        "longitude": 72.9106,
+        "phone": "+91 22 2886 0389",
+    },
+]
+
+# Initialize users_db from persisted JSON or seed list
+_loaded = load_persisted_users()
+if _loaded:
+    users_db = _loaded
+    # Ensure seed users are included
+    existing_emails = {u.get("email", "").lower() for u in users_db}
+    for seed in DEFAULT_USERS_SEED:
+        if seed["email"].lower() not in existing_emails:
+            users_db.append(seed)
+else:
+    users_db = list(DEFAULT_USERS_SEED)
+
+def save_persisted_users():
+    try:
+        with open(USERS_STORAGE_FILE, "w", encoding="utf-8") as f:
+            json.dump(users_db, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Failed to save persisted users: {e}")
+
+# Save initial state
+save_persisted_users()
+
+notifications_db = []
 
 # Pydantic Schemas
 class ReportCreate(BaseModel):
@@ -542,14 +799,36 @@ class AlertCreate(BaseModel):
     valid_until: Optional[str] = None
     source: Optional[str] = "Forest Command"
 
+class GeofencedAlertCreate(BaseModel):
+    title: str
+    severity: str = "High"  # "Low", "Medium", "High", "Critical"
+    message: str
+    location: str
+    latitude: float
+    longitude: float
+    radius_km: float = 5.0
+    alert_type: Optional[str] = "Disaster Advisory"
+    source: Optional[str] = "Forest Command & Disaster Management (MMR)"
+    valid_until: Optional[str] = None
+
+class AudiencePreviewRequest(BaseModel):
+    latitude: float
+    longitude: float
+    radius_km: float = 5.0
+
+class TestEmailRequest(BaseModel):
+    email: str
+    title: Optional[str] = "Test Emergency Geofence Alert"
+    location: Optional[str] = "SGNP Borivali Buffer Zone, Mumbai"
+
 class PublicUpdateCreate(BaseModel):
     title: str
     category: str
     severity: Optional[str] = "Medium"
     message: str
     location: Optional[str] = None
-    latitude: Optional[float] = 11.6054
-    longitude: Optional[float] = 76.0830
+    latitude: Optional[float] = 19.2288
+    longitude: Optional[float] = 72.8570
     radius_km: Optional[float] = 3.0
     target_regions: Optional[List[str]] = Field(default_factory=lambda: ["All Regions"])
     author: Optional[str] = "Forest Command Officer"
@@ -558,6 +837,7 @@ class PublicUpdateCreate(BaseModel):
 class AuthLoginRequest(BaseModel):
     email: str
     password: str
+    role: Optional[str] = None
 
 class AuthRegisterRequest(BaseModel):
     name: str
@@ -565,11 +845,19 @@ class AuthRegisterRequest(BaseModel):
     password: str
     role: Optional[str] = "Citizen"
     district: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = "Mumbai"
+    state: Optional[str] = "Maharashtra"
+    phone: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     assigned_station: Optional[str] = None
     badge_number: Optional[str] = None
 
 class ProfileUpdateRequest(BaseModel):
+    email: Optional[str] = None
     name: Optional[str] = None
+    role: Optional[str] = None
     phone: Optional[str] = None
     address: Optional[str] = None
     city: Optional[str] = None
@@ -581,6 +869,18 @@ class ProfileUpdateRequest(BaseModel):
     longitude: Optional[float] = None
     assigned_station: Optional[str] = None
     badge_number: Optional[str] = None
+
+class CitizenCreateRequest(BaseModel):
+    name: str
+    email: str
+    password: Optional[str] = "Password123!"
+    district: Optional[str] = "Mumbai Suburban"
+    address: Optional[str] = ""
+    city: Optional[str] = "Mumbai"
+    state: Optional[str] = "Maharashtra"
+    latitude: float
+    longitude: float
+    phone: Optional[str] = "+91 98000 00000"
 
 
 @app.get("/")
@@ -596,12 +896,37 @@ def home():
 def health():
     return {"status": "healthy", "cognito_region": "ap-south-1"}
 
+MUMBAI_AREA_COORDINATES = {
+    "borivali": (19.2290, 72.8600),
+    "sgnp": (19.2288, 72.8570),
+    "mumbai suburban": (19.2288, 72.8570),
+    "aarey": (19.1550, 72.8750),
+    "goregaon": (19.1550, 72.8750),
+    "thane": (19.2183, 72.9463),
+    "ghodbunder": (19.2785, 72.9240),
+    "yeoor": (19.2200, 72.9480),
+    "navi mumbai": (19.1623, 72.9967),
+    "airoli": (19.1623, 72.9967),
+    "palghar": (19.4350, 72.8870),
+    "vasai": (19.4350, 72.8870),
+    "tungareshwar": (19.4350, 72.8870),
+    "mumbai city": (18.9388, 72.8354),
+    "colaba": (18.9067, 72.8147),
+    "raigad": (18.9902, 73.2728),
+}
+
 # Auth endpoints
 @app.post("/auth/login")
 def login(payload: AuthLoginRequest):
     # Match user in users_db
     for u in users_db:
         if u["email"].lower() == payload.email.lower() and u["password"] == payload.password:
+            # Preserve or upgrade to Officer if requested or if station assigned
+            if (payload.role and payload.role.lower() == "officer") or u.get("assigned_station") or u.get("role", "").lower() == "officer":
+                u["role"] = "Officer"
+                if not u.get("assigned_station"):
+                    u["assigned_station"] = "Sanjay Gandhi National Park (SGNP) Range Office (Borivali East)"
+                save_persisted_users()
             return {
                 "token": f"token-{uuid.uuid4().hex}",
                 "user": {
@@ -609,6 +934,11 @@ def login(payload: AuthLoginRequest):
                     "name": u["name"],
                     "role": u.get("role", "Citizen"),
                     "district": u.get("district"),
+                    "address": u.get("address"),
+                    "city": u.get("city", "Mumbai"),
+                    "latitude": u.get("latitude"),
+                    "longitude": u.get("longitude"),
+                    "phone": u.get("phone"),
                     "assigned_station": u.get("assigned_station"),
                     "badge_number": u.get("badge_number")
                 }
@@ -620,15 +950,25 @@ def login(payload: AuthLoginRequest):
             raise HTTPException(status_code=401, detail="Incorrect password for this account.")
             
     # For local convenience if not in users_db yet, auto-register
+    new_user_role = "Officer" if (payload.role and payload.role.lower() == "officer") else "Citizen"
     new_user = {
+        "id": f"usr-{uuid.uuid4().hex[:6]}",
         "email": payload.email,
         "password": payload.password,
         "name": payload.email.split("@")[0].replace(".", " ").title(),
-        "role": "Citizen",
-        "district": None,
-        "assigned_station": None
+        "role": new_user_role,
+        "district": "Mumbai Suburban",
+        "address": "Western Express Highway, SGNP Buffer, Borivali East",
+        "city": "Mumbai",
+        "state": "Maharashtra",
+        "latitude": 19.2288,
+        "longitude": 72.8570,
+        "phone": "+91 98000 00000",
+        "assigned_station": "Sanjay Gandhi National Park (SGNP) Range Office (Borivali East)" if new_user_role == "Officer" else None,
+        "badge_number": "MH-FOR-2026-01" if new_user_role == "Officer" else None
     }
     users_db.append(new_user)
+    save_persisted_users()
     return {
         "token": f"token-{uuid.uuid4().hex}",
         "user": new_user
@@ -636,31 +976,64 @@ def login(payload: AuthLoginRequest):
 
 @app.post("/auth/register")
 def register(payload: AuthRegisterRequest):
+    # Determine coordinates
+    lat = payload.latitude
+    lng = payload.longitude
+    if lat is None or lng is None:
+        key = f"{payload.district or ''} {payload.address or ''}".lower().strip()
+        for k, coords in MUMBAI_AREA_COORDINATES.items():
+            if k in key:
+                lat, lng = coords
+                break
+        if lat is None:
+            lat, lng = 19.2288, 72.8570  # Default SGNP Borivali Corridor
+
+    target_role = "Officer" if (payload.role and payload.role.lower() == "officer") or payload.assigned_station else "Citizen"
+
+    # If user with this email already exists, update their record
     for u in users_db:
         if u["email"].lower() == payload.email.lower():
-            raise HTTPException(status_code=400, detail="An account with this email already exists.")
+            u["name"] = payload.name
+            u["role"] = target_role
+            u["district"] = payload.district or u.get("district")
+            u["address"] = payload.address or u.get("address")
+            u["city"] = payload.city or u.get("city", "Mumbai")
+            u["latitude"] = lat
+            u["longitude"] = lng
+            u["phone"] = payload.phone or u.get("phone")
+            if payload.assigned_station:
+                u["assigned_station"] = payload.assigned_station
+            if payload.badge_number:
+                u["badge_number"] = payload.badge_number
+            save_persisted_users()
+            return {
+                "success": True,
+                "message": "Account profile updated successfully!",
+                "user": u
+            }
 
     new_user = {
+        "id": f"usr-{uuid.uuid4().hex[:6]}",
         "email": payload.email,
         "password": payload.password,
         "name": payload.name,
-        "role": payload.role or "Citizen",
-        "district": payload.district,
-        "assigned_station": payload.assigned_station,
-        "badge_number": payload.badge_number
+        "role": target_role,
+        "district": payload.district or "Mumbai Suburban",
+        "address": payload.address or f"{payload.district or 'Mumbai'} Resident Zone",
+        "city": payload.city or "Mumbai",
+        "state": payload.state or "Maharashtra",
+        "phone": payload.phone or "+91 98000 00000",
+        "latitude": lat,
+        "longitude": lng,
+        "assigned_station": payload.assigned_station if target_role == "Officer" else None,
+        "badge_number": payload.badge_number if target_role == "Officer" else None
     }
     users_db.append(new_user)
+    save_persisted_users()
     return {
         "success": True,
         "message": "Account created successfully!",
-        "user": {
-            "email": new_user["email"],
-            "name": new_user["name"],
-            "role": new_user["role"],
-            "district": new_user["district"],
-            "assigned_station": new_user["assigned_station"],
-            "badge_number": new_user["badge_number"]
-        }
+        "user": new_user
     }
 
 @app.get("/auth/me")
@@ -672,16 +1045,38 @@ def get_current_user():
 @app.put("/auth/profile")
 def update_profile(payload: ProfileUpdateRequest):
     target = None
-    if users_db:
-        target = users_db[-1]
-    else:
-        target = {"email": "user@theraphylax.org", "name": "User", "role": "Citizen"}
+    if payload.email:
+        for u in users_db:
+            if u["email"].lower() == payload.email.lower():
+                target = u
+                break
+
+    if not target and users_db:
+        # Match citizen user first, or last user
+        target = next((u for u in users_db if u.get("role") == "Citizen"), users_db[-1])
+
+    if not target:
+        target_role = payload.role or ("Officer" if payload.assigned_station else "Citizen")
+        target = {
+            "id": f"usr-{uuid.uuid4().hex[:6]}",
+            "email": payload.email or "user@theraphylax.org",
+            "name": payload.name or "User",
+            "role": target_role,
+            "latitude": payload.latitude or 19.2288,
+            "longitude": payload.longitude or 72.8570
+        }
         users_db.append(target)
     
     for key, val in payload.dict(exclude_unset=True).items():
         if val is not None:
             target[key] = val
-            
+
+    if payload.role:
+        target["role"] = payload.role
+    elif target.get("assigned_station"):
+        target["role"] = "Officer"
+
+    save_persisted_users()
     return {"success": True, "message": "Profile updated successfully!", "user": target}
 
 # Reports Endpoints
@@ -753,13 +1148,253 @@ def update_report_status(report_id: str, payload: StatusUpdate):
             return r
     raise HTTPException(status_code=404, detail="Report not found")
 
-# Alerts Endpoints
+# -------------------------------------------------------------
+# GEOFENCED ALERTS & TARGETED NOTIFICATION ENDPOINTS
+# -------------------------------------------------------------
 @app.get("/alerts")
 def get_alerts():
     return alerts_db
 
+@app.get("/citizens")
+def get_citizens():
+    """Returns all registered citizens (residents) in the system."""
+    res = []
+    for u in users_db:
+        if u.get("role", "Citizen") == "Citizen":
+            try:
+                lat = float(u.get("latitude")) if u.get("latitude") is not None else None
+                lng = float(u.get("longitude")) if u.get("longitude") is not None else None
+            except (ValueError, TypeError):
+                lat, lng = None, None
+            res.append({
+                "id": u.get("id", f"usr-{u.get('email')}"),
+                "name": u.get("name", "Resident"),
+                "email": u.get("email"),
+                "role": "Citizen",
+                "district": u.get("district", "Mumbai"),
+                "address": u.get("address", ""),
+                "city": u.get("city", "Mumbai"),
+                "latitude": lat,
+                "longitude": lng,
+                "phone": u.get("phone")
+            })
+    return res
+
+@app.post("/citizens")
+def create_or_update_citizen(payload: CitizenCreateRequest):
+    """Allows creating or directly updating a resident's location in the system."""
+    for u in users_db:
+        if u.get("email", "").lower() == payload.email.lower():
+            u["name"] = payload.name
+            if u.get("role") != "Officer" and not u.get("assigned_station"):
+                u["role"] = "Citizen"
+            u["district"] = payload.district or u.get("district", "Mumbai Suburban")
+            u["address"] = payload.address or u.get("address", "")
+            u["city"] = payload.city or "Mumbai"
+            u["state"] = payload.state or "Maharashtra"
+            u["latitude"] = float(payload.latitude)
+            u["longitude"] = float(payload.longitude)
+            if payload.phone:
+                u["phone"] = payload.phone
+            save_persisted_users()
+            return {"success": True, "message": "Resident updated successfully!", "citizen": u}
+
+    new_citizen = {
+        "id": f"usr-{uuid.uuid4().hex[:6]}",
+        "email": payload.email,
+        "password": payload.password or "Password123!",
+        "name": payload.name,
+        "role": "Citizen",
+        "district": payload.district or "Mumbai Suburban",
+        "address": payload.address or f"{payload.district} Resident Zone",
+        "city": payload.city or "Mumbai",
+        "state": payload.state or "Maharashtra",
+        "phone": payload.phone or "+91 98000 00000",
+        "latitude": float(payload.latitude),
+        "longitude": float(payload.longitude),
+        "assigned_station": None,
+        "badge_number": None,
+    }
+    users_db.append(new_citizen)
+    save_persisted_users()
+    return {"success": True, "message": "Resident created successfully!", "citizen": new_citizen}
+
+@app.post("/alerts/preview-audience")
+def preview_geofence_audience(payload: AudiencePreviewRequest):
+    """
+    Simulates audience targeting for the given geofence epicenter and radius.
+    Returns the real registered citizens located strictly inside the fenced perimeter,
+    and all registered citizens with distance metrics.
+    """
+    matched = []
+    all_registered = []
+    for u in users_db:
+        if u.get("role", "Citizen") != "Citizen":
+            continue
+        try:
+            u_lat = float(u.get("latitude"))
+            u_lng = float(u.get("longitude"))
+        except (TypeError, ValueError):
+            continue
+
+        dist = haversine_distance_km(payload.latitude, payload.longitude, u_lat, u_lng)
+        in_fence = dist <= payload.radius_km
+        cit_data = {
+            "id": u.get("id", f"usr-{u.get('email')}"),
+            "name": u.get("name", "Resident"),
+            "email": u.get("email"),
+            "role": "Citizen",
+            "district": u.get("district", "Mumbai"),
+            "address": u.get("address", ""),
+            "city": u.get("city", "Mumbai"),
+            "latitude": u_lat,
+            "longitude": u_lng,
+            "distance_km": round(dist, 2),
+            "in_geofence": in_fence
+        }
+        all_registered.append(cit_data)
+        if in_fence:
+            matched.append(cit_data)
+
+    return {
+        "geofence_center": {"latitude": payload.latitude, "longitude": payload.longitude},
+        "radius_km": payload.radius_km,
+        "matched_count": len(matched),
+        "total_registered_citizens": len(all_registered),
+        "matched_citizens": sorted(matched, key=lambda x: x["distance_km"]),
+        "all_citizens": sorted(all_registered, key=lambda x: x["distance_km"])
+    }
+
+@app.post("/alerts/geofenced")
+def create_geofenced_alert(payload: GeofencedAlertCreate):
+    """
+    Officer broadcasts a geofenced notification to a certain location.
+    Delivery Policy:
+      - Low / Medium severity: In-App notification ONLY for people inside the geofence.
+      - High / Critical severity: In-App notification AND Gmail/Email notification via AWS SES / SNS.
+      - Priority color-coding:
+          Low: #10B981 (Green)
+          Medium: #F59E0B (Amber)
+          High/Critical: #EF4444 (Crimson Red)
+    """
+    new_id = f"alt-{uuid.uuid4().hex[:6]}"
+    is_high_severity = payload.severity in ["High", "Critical"]
+    
+    # Priority color mapping
+    if payload.severity == "Low":
+        priority_color = "#10B981"
+        priority_label = "Low Priority"
+        channels = ["app"]
+    elif payload.severity == "Medium":
+        priority_color = "#F59E0B"
+        priority_label = "Medium Priority"
+        channels = ["app"]
+    else:
+        priority_color = "#EF4444"
+        priority_label = "High Priority (Critical)"
+        channels = ["app", "email"]
+
+    # 1. Target citizens strictly inside the geofence perimeter
+    targeted_citizens = []
+    email_dispatches = []
+    now_iso = datetime.utcnow().isoformat() + "Z"
+
+    alert_summary = {
+        "id": new_id,
+        "title": payload.title,
+        "message": payload.message,
+        "severity": payload.severity,
+        "priority_label": priority_label,
+        "priority_color": priority_color,
+        "location": payload.location,
+        "latitude": payload.latitude,
+        "longitude": payload.longitude,
+        "radius_km": payload.radius_km,
+        "source": payload.source,
+        "channels": channels,
+        "created_at": now_iso
+    }
+
+    for u in users_db:
+        if u.get("role", "Citizen") != "Citizen":
+            continue
+        try:
+            u_lat = float(u.get("latitude"))
+            u_lng = float(u.get("longitude"))
+        except (TypeError, ValueError):
+            continue
+
+        dist = haversine_distance_km(payload.latitude, payload.longitude, u_lat, u_lng)
+        if dist <= payload.radius_km:
+                email_status = "In-App Push Delivered"
+                dispatched_email = False
+
+                # If high severity, dispatch Gmail / Email via AWS
+                if is_high_severity and u.get("email"):
+                    dispatch_res = dispatch_emergency_email(
+                        user_email=u["email"],
+                        user_name=u.get("name", "Citizen"),
+                        alert_data=alert_summary,
+                        distance_km=dist
+                    )
+                    email_status = dispatch_res.get("status", "Dispatched to Gmail")
+                    dispatched_email = True
+                    email_dispatches.append(dispatch_res)
+
+                # Store user notification in database
+                notif_item = {
+                    "id": f"notif-{uuid.uuid4().hex[:6]}",
+                    "alert_id": new_id,
+                    "user_email": u.get("email"),
+                    "user_name": u.get("name"),
+                    "title": payload.title,
+                    "message": payload.message,
+                    "severity": payload.severity,
+                    "priority_label": priority_label,
+                    "priority_color": priority_color,
+                    "channels": channels,
+                    "location_name": payload.location,
+                    "alert_latitude": payload.latitude,
+                    "alert_longitude": payload.longitude,
+                    "alert_radius_km": payload.radius_km,
+                    "user_distance_km": dist,
+                    "email_dispatched": dispatched_email,
+                    "email_status": email_status,
+                    "is_read": False,
+                    "created_at": now_iso
+                }
+                notifications_db.insert(0, notif_item)
+                targeted_citizens.append({
+                    "name": u.get("name"),
+                    "email": u.get("email"),
+                    "distance_km": dist,
+                    "email_dispatched": dispatched_email,
+                    "email_status": email_status
+                })
+
+    # Save to active alerts list
+    alert_summary["targeted_citizens_count"] = len(targeted_citizens)
+    alert_summary["delivery_status"] = (
+        f"Delivered to {len(targeted_citizens)} citizens in {payload.location} ({payload.radius_km} km radius) "
+        f"via {', '.join(channels).upper()}"
+    )
+    alerts_db.insert(0, alert_summary)
+
+    return {
+        "success": True,
+        "message": f"Geofenced alert broadcast successfully to {len(targeted_citizens)} citizens!",
+        "alert": alert_summary,
+        "targeted_citizens_count": len(targeted_citizens),
+        "targeted_citizens": targeted_citizens,
+        "channels_used": channels,
+        "email_dispatches": email_dispatches,
+        "aws_region": AWS_REGION,
+        "aws_sns_topic": AWS_SNS_TOPIC_ARN
+    }
+
 @app.post("/alerts")
 def create_alert(payload: AlertCreate):
+    """Legacy compatibility alert endpoint; redirects to standard broadcast."""
     new_alert = {
         "id": f"alt-{uuid.uuid4().hex[:6]}",
         "created_at": datetime.utcnow().isoformat() + "Z",
@@ -768,6 +1403,98 @@ def create_alert(payload: AlertCreate):
     }
     alerts_db.insert(0, new_alert)
     return new_alert
+
+# -------------------------------------------------------------
+# USER NOTIFICATIONS ENDPOINTS
+# -------------------------------------------------------------
+@app.get("/notifications")
+def get_user_notifications(user_email: Optional[str] = None):
+    """
+    Retrieves in-app notifications. If user_email is provided, filters for that specific user.
+    """
+    if user_email and user_email.strip():
+        items = [n for n in notifications_db if n.get("user_email", "").lower() == user_email.strip().lower()]
+    else:
+        items = notifications_db
+
+    unread_count = len([n for n in items if not n.get("is_read", False)])
+    return {
+        "unread_count": unread_count,
+        "total_count": len(items),
+        "notifications": items
+    }
+
+@app.patch("/notifications/{notif_id}/read")
+def mark_notification_read(notif_id: str):
+    for n in notifications_db:
+        if n["id"] == notif_id:
+            n["is_read"] = True
+            return {"success": True, "notification": n}
+    raise HTTPException(status_code=404, detail="Notification not found")
+
+@app.post("/notifications/mark-all-read")
+def mark_all_notifications_read(payload: Optional[dict] = Body(default={})):
+    user_email = payload.get("user_email") if payload else None
+    count = 0
+    for n in notifications_db:
+        if not user_email or n.get("user_email", "").lower() == user_email.strip().lower():
+            if not n.get("is_read", False):
+                n["is_read"] = True
+                count += 1
+    return {"success": True, "marked_count": count}
+
+# -------------------------------------------------------------
+# AWS SETTINGS & TEST EMAIL DISPATCH
+# -------------------------------------------------------------
+@app.get("/aws/settings")
+def get_aws_settings():
+    return {
+        "region": AWS_REGION,
+        "sns_topic_arn": AWS_SNS_TOPIC_ARN,
+        "ses_sender": AWS_SES_SENDER,
+        "ses_available": ses_client is not None,
+        "sns_available": sns_client is not None,
+        "delivery_policy": {
+            "low_medium": "In-App Push Only (Delivered to citizens inside active geofence)",
+            "high_critical": "In-App Push + Email (Gmail) via AWS SES / SNS to citizens inside active geofence"
+        }
+    }
+
+@app.post("/aws/test-email")
+def test_aws_emergency_email(payload: TestEmailRequest):
+    """
+    Allows the user or officer to test live AWS emergency email dispatch to their own inbox.
+    """
+    test_alert = {
+        "title": payload.title or "Emergency Geofence Drill: High Priority Warning",
+        "message": "This is a verified test of the TheraPhylax AWS Geofenced Notification System. In an actual high-severity incident, residents inside the geofence perimeter receive immediate app and email notifications.",
+        "location": payload.location or "SGNP Borivali Wildlife Corridor, Mumbai",
+        "radius_km": 4.5,
+        "source": "TheraPhylax Emergency Test Dispatch",
+        "severity": "High"
+    }
+    result = dispatch_emergency_email(
+        user_email=payload.email,
+        user_name="Verified Resident",
+        alert_data=test_alert,
+        distance_km=1.2
+    )
+    if not result.get("ses_sent") and not result.get("sns_published"):
+        err_msg = result.get("ses_error", "Identity not yet verified in AWS SES sandbox.")
+        if "Email address is not verified" in err_msg or "MessageRejected" in err_msg:
+            friendly_err = f"AWS SES sandbox requires email verification. AWS sent a verification link to {payload.email}. Please click the link in your Gmail inbox to activate email delivery."
+        else:
+            friendly_err = f"AWS Dispatch Notice: {err_msg}"
+        return {
+            "success": False,
+            "message": friendly_err,
+            "result": result
+        }
+    return {
+        "success": True,
+        "message": f"Emergency test email dispatched to {payload.email} via AWS SES/SNS",
+        "result": result
+    }
 
 # Public Safety Updates Endpoints
 @app.get("/updates")

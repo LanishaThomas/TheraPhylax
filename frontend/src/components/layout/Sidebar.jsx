@@ -16,6 +16,7 @@ import {
   Compass,
   Settings,
   ShieldAlert,
+  Bell,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { Badge } from "../ui/Badge";
@@ -38,10 +39,11 @@ export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
     navItems = [
       { label: "Officer Command", path: "/officer/dashboard", icon: Radio, badge: "Officer", color: "#34D399" },
       { label: "Incident Triage", path: "/reports", icon: FileText, color: "#60A5FA" },
+      { label: "Create Geofenced Alert", path: "/officer/alerts/create", icon: MapPin, color: "#F87171" },
+      { label: "Geofence Notifications", path: "/notifications", icon: Bell, color: "#EF4444" },
+      { label: "Targeted Geo-Alerts", path: "/alerts", icon: AlertTriangle, color: "#FBBF24" },
       { label: "Public Safety Updates", path: "/updates", icon: Compass, color: "#34D399" },
       { label: "Publish Safety Advisory", path: "/officer/updates/create", icon: Send, color: "#C084FC" },
-      { label: "Targeted Geo-Alerts", path: "/alerts", icon: AlertTriangle, color: "#FBBF24" },
-      { label: "Create Geo-Alert", path: "/officer/alerts/create", icon: MapPin, color: "#F87171" },
       { label: "Animal & Safety News", path: "/news", icon: Newspaper, color: "#FBBF24" },
       { label: "My Profile", path: "/profile", icon: User, color: "#9CA3AF" },
     ];
@@ -50,6 +52,7 @@ export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
       { label: "Citizen Dashboard", path: "/dashboard", icon: LayoutDashboard, color: "#34D399" },
       { label: "Admin Console", path: "/admin", icon: Settings, badge: "Admin", color: "#C084FC" },
       { label: "Responder Command", path: "/responder", icon: Radio, badge: "Officer", color: "#FBBF24" },
+      { label: "Geofence Notifications", path: "/notifications", icon: Bell, color: "#EF4444" },
       { label: "Report Incident / Accident", path: "/accidents/report", icon: FilePlus, color: "#F87171" },
       { label: "My Submitted Reports", path: "/accidents/my-reports", icon: FileText, color: "#60A5FA" },
       { label: "Public Safety Updates", path: "/updates", icon: Compass, color: "#34D399" },
@@ -62,6 +65,7 @@ export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
     // Default Citizen Role
     navItems = [
       { label: "Citizen Dashboard", path: "/dashboard", icon: LayoutDashboard, color: "#34D399" },
+      { label: "My Notifications", path: "/notifications", icon: Bell, color: "#EF4444" },
       { label: "Report Incident / Accident", path: "/accidents/report", icon: FilePlus, color: "#F87171" },
       { label: "My Submitted Reports", path: "/accidents/my-reports", icon: FileText, color: "#60A5FA" },
       { label: "Public Safety Updates", path: "/updates", icon: Compass, color: "#34D399" },

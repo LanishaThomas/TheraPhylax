@@ -11,6 +11,10 @@ export const AuthProvider = ({ children }) => {
     const savedUser = authService.getCurrentUser();
     const token = authService.getToken();
     if (savedUser && token) {
+      if ((savedUser.assigned_station || savedUser.role?.toLowerCase() === "officer") && savedUser.role !== "Officer") {
+        savedUser.role = "Officer";
+        localStorage.setItem("theraphylax_user", JSON.stringify(savedUser));
+      }
       setUser(savedUser);
     }
     setLoading(false);

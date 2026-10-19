@@ -61,6 +61,65 @@ const DEFAULT_STATIONS_BY_DISTRICT = {
   ],
 };
 
+const CITIZEN_MUMBAI_AREAS = [
+  {
+    name: "Borivali East / SGNP National Park Buffer",
+    district: "Mumbai Suburban",
+    address: "Kanheri Gate Enclave, Borivali East, Mumbai",
+    lat: 19.2290,
+    lng: 72.8600,
+  },
+  {
+    name: "Aarey Milk Colony / Goregaon East (Wildlife Corridor)",
+    district: "Mumbai Suburban",
+    address: "Unit 16, Aarey Milk Colony, Goregaon East, Mumbai",
+    lat: 19.1550,
+    lng: 72.8750,
+  },
+  {
+    name: "Thane West / Yeoor Hills & Upvan Lake Fringe",
+    district: "Thane",
+    address: "Upvan Lake Road, Yeoor Foothills, Thane West",
+    lat: 19.2200,
+    lng: 72.9480,
+  },
+  {
+    name: "Ghodbunder Road Corridor (Ovala / Chena Creek)",
+    district: "Thane",
+    address: "Ghodbunder Road, Ovala Buffer Zone, Thane",
+    lat: 19.2780,
+    lng: 72.9250,
+  },
+  {
+    name: "Navi Mumbai / Airoli & Thane Creek Buffer",
+    district: "Navi Mumbai",
+    address: "Sector 10, Airoli, Navi Mumbai",
+    lat: 19.1623,
+    lng: 72.9967,
+  },
+  {
+    name: "Palghar / Vasai & Tungareshwar Sanctuary Buffer",
+    district: "Palghar",
+    address: "Pelhar Dam Road, Vasai East, Palghar",
+    lat: 19.4350,
+    lng: 72.8870,
+  },
+  {
+    name: "Mumbai City / Colaba & South Mumbai",
+    district: "Mumbai City",
+    address: "Colaba Causeway, South Mumbai",
+    lat: 18.9067,
+    lng: 72.8147,
+  },
+  {
+    name: "Custom Coordinates / Detect Current Location",
+    district: "Mumbai Suburban",
+    address: "Custom Resident Location, Mumbai",
+    lat: 19.2288,
+    lng: 72.8570,
+  },
+];
+
 export const RegisterPage = ({ initialRole }) => {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -90,6 +149,55 @@ export const RegisterPage = ({ initialRole }) => {
   );
   const [customStation, setCustomStation] = useState("");
   const [badgeNumber, setBadgeNumber] = useState("");
+
+  // Citizen-specific Residential Location & Coordinates
+  const [selectedAreaIndex, setSelectedAreaIndex] = useState(0);
+  const [citizenAddress, setCitizenAddress] = useState(CITIZEN_MUMBAI_AREAS[0].address);
+  const [citizenDistrict, setCitizenDistrict] = useState(CITIZEN_MUMBAI_AREAS[0].district);
+  const [citizenLat, setCitizenLat] = useState(CITIZEN_MUMBAI_AREAS[0].lat);
+  const [citizenLng, setCitizenLng] = useState(CITIZEN_MUMBAI_AREAS[0].lng);
+  const [detectingGps, setDetectingGps] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState("");
+
+  const handleAreaSelect = (e) => {
+    const idx = parseInt(e.target.value, 10);
+    setSelectedAreaIndex(idx);
+    const chosen = CITIZEN_MUMBAI_AREAS[idx];
+    if (chosen) {
+      setCitizenAddress(chosen.address);
+      setCitizenDistrict(chosen.district);
+      setCitizenLat(chosen.lat);
+      setCitizenLng(chosen.lng);
+    }
+  };
+
+  const handleDetectGps = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser.");
+      return;
+    }
+    setDetectingGps(true);
+    setGpsStatus("Acquiring GPS fix...");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = parseFloat(pos.coords.latitude.toFixed(6));
+        const lng = parseFloat(pos.coords.longitude.toFixed(6));
+        setCitizenLat(lat);
+        setCitizenLng(lng);
+        setCitizenAddress(`GPS Pin (${lat}, ${lng})`);
+        setSelectedAreaIndex(CITIZEN_MUMBAI_AREAS.length - 1);
+        setGpsStatus("✓ Current GPS location pinned!");
+        setDetectingGps(false);
+        setTimeout(() => setGpsStatus(""), 3500);
+      },
+      (err) => {
+        setGpsStatus("Could not acquire GPS: " + err.message);
+        setDetectingGps(false);
+        setTimeout(() => setGpsStatus(""), 4000);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -186,11 +294,20 @@ export const RegisterPage = ({ initialRole }) => {
         email,
         password,
         role: activeRole, // "Officer" or "Citizen"
-        ...(activeRole === "Officer" && {
-          district: selectedDistrict,
-          assigned_station: finalStationName,
-          badge_number: badgeNumber.trim() || `KL-FR-${selectedDistrict.toUpperCase().slice(0, 3)}-01`,
-        }),
+        ...(activeRole === "Officer"
+          ? {
+              district: selectedDistrict,
+              assigned_station: finalStationName,
+              badge_number: badgeNumber.trim() || `KL-FR-${selectedDistrict.toUpperCase().slice(0, 3)}-01`,
+            }
+          : {
+              district: citizenDistrict,
+              address: citizenAddress,
+              city: "Mumbai",
+              state: "Maharashtra",
+              latitude: parseFloat(citizenLat),
+              longitude: parseFloat(citizenLng),
+            }),
       };
 
       const res = await register(payload);
@@ -562,6 +679,142 @@ export const RegisterPage = ({ initialRole }) => {
                     onChange={(e) => setBadgeNumber(e.target.value)}
                     style={{ height: "38px", fontSize: "0.8125rem", backgroundColor: "#FFFFFF" }}
                   />
+                </div>
+              </div>
+            )}
+
+            {/* CITIZEN-ONLY: RESIDENTIAL AREA & LOCATION PIN */}
+            {activeRole === "Citizen" && (
+              <div
+                style={{
+                  backgroundColor: "rgba(16, 185, 129, 0.06)",
+                  border: "1.5px solid rgba(16, 185, 129, 0.25)",
+                  borderRadius: "14px",
+                  padding: "1.125rem",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "0.875rem",
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.25rem" }}>
+                    <label
+                      htmlFor="citizen-area"
+                      style={{
+                        fontWeight: 800,
+                        color: "#065F46",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.375rem",
+                        margin: 0,
+                        fontSize: "0.875rem",
+                      }}
+                    >
+                      <MapPin size={16} /> Residential Area / Geofence Zone *
+                    </label>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#059669" }}>
+                      {citizenDistrict}
+                    </span>
+                  </div>
+                  <p style={{ fontSize: "0.75rem", color: "#047857", margin: "0.15rem 0 0.5rem" }}>
+                    Select your neighborhood so the system and officer command can dispatch geofenced warnings to your residence.
+                  </p>
+
+                  <select
+                    id="citizen-area"
+                    value={selectedAreaIndex}
+                    onChange={handleAreaSelect}
+                    style={{
+                      height: "44px",
+                      borderRadius: "10px",
+                      border: "1.5px solid rgba(16, 185, 129, 0.4)",
+                      fontWeight: 700,
+                      backgroundColor: "#FFFFFF",
+                      width: "100%",
+                      fontSize: "0.875rem",
+                    }}
+                    required
+                  >
+                    {CITIZEN_MUMBAI_AREAS.map((area, idx) => (
+                      <option key={idx} value={idx}>
+                        {area.name} ({area.district})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="citizen-address" style={{ fontSize: "0.8125rem", color: "#065F46", fontWeight: 700 }}>
+                    Local Address / Society / Road
+                  </label>
+                  <input
+                    id="citizen-address"
+                    type="text"
+                    placeholder="e.g. Kanheri Gate Enclave, Borivali East"
+                    value={citizenAddress}
+                    onChange={(e) => setCitizenAddress(e.target.value)}
+                    style={{ height: "40px", fontSize: "0.875rem", backgroundColor: "#FFFFFF" }}
+                  />
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                  <div>
+                    <label htmlFor="citizen-lat" style={{ fontSize: "0.75rem", color: "#065F46", fontWeight: 700 }}>
+                      Latitude
+                    </label>
+                    <input
+                      id="citizen-lat"
+                      type="number"
+                      step="any"
+                      value={citizenLat}
+                      onChange={(e) => setCitizenLat(parseFloat(e.target.value) || 0)}
+                      style={{ height: "36px", fontSize: "0.8125rem", backgroundColor: "#FFFFFF" }}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="citizen-lng" style={{ fontSize: "0.75rem", color: "#065F46", fontWeight: 700 }}>
+                      Longitude
+                    </label>
+                    <input
+                      id="citizen-lng"
+                      type="number"
+                      step="any"
+                      value={citizenLng}
+                      onChange={(e) => setCitizenLng(parseFloat(e.target.value) || 0)}
+                      style={{ height: "36px", fontSize: "0.8125rem", backgroundColor: "#FFFFFF" }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
+                  <button
+                    type="button"
+                    onClick={handleDetectGps}
+                    disabled={detectingGps}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "0.375rem",
+                      fontSize: "0.75rem",
+                      fontWeight: 700,
+                      color: "#065F46",
+                      backgroundColor: "#FFFFFF",
+                      border: "1.5px solid #10B981",
+                      padding: "0.4rem 0.75rem",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <Compass size={13} style={{ color: "#10B981" }} />
+                    {detectingGps ? "Acquiring GPS..." : "Pin My Current GPS Location"}
+                  </button>
+
+                  {gpsStatus && (
+                    <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#047857" }}>
+                      {gpsStatus}
+                    </span>
+                  )}
                 </div>
               </div>
             )}

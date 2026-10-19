@@ -74,9 +74,52 @@ export const apiService = {
     return apiRequest("/alerts");
   },
   createGeographicAlert: async (alertData) => {
-    return apiRequest("/alerts", {
+    return apiRequest("/alerts/geofenced", {
       method: "POST",
       body: JSON.stringify(alertData),
+    });
+  },
+  previewGeofenceAudience: async ({ latitude, longitude, radius_km }) => {
+    return apiRequest("/alerts/preview-audience", {
+      method: "POST",
+      body: JSON.stringify({ latitude, longitude, radius_km }),
+    });
+  },
+  getCitizens: async () => {
+    return apiRequest("/citizens");
+  },
+  createCitizen: async (citizenData) => {
+    return apiRequest("/citizens", {
+      method: "POST",
+      body: JSON.stringify(citizenData),
+    });
+  },
+
+  // User In-App & Geofenced Notifications
+  getNotifications: async (userEmail = "") => {
+    const q = userEmail ? `?user_email=${encodeURIComponent(userEmail)}` : "";
+    return apiRequest(`/notifications${q}`);
+  },
+  markNotificationRead: async (notifId) => {
+    return apiRequest(`/notifications/${notifId}/read`, {
+      method: "PATCH",
+    });
+  },
+  markAllNotificationsRead: async (userEmail = "") => {
+    return apiRequest("/notifications/mark-all-read", {
+      method: "POST",
+      body: JSON.stringify({ user_email: userEmail }),
+    });
+  },
+
+  // AWS Notification Settings & Test Email Dispatch
+  getAwsSettings: async () => {
+    return apiRequest("/aws/settings");
+  },
+  testAwsEmail: async (data) => {
+    return apiRequest("/aws/test-email", {
+      method: "POST",
+      body: JSON.stringify(data),
     });
   },
 
