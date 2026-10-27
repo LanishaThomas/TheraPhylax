@@ -9,9 +9,10 @@ backend/users_storage.json
 backend/*_storage.json
 *.json_storage
 
-# Node
+# Node & Build Artifacts
 frontend/node_modules/
 frontend/dist/
+backend/static/
 
 # IDE and operating system
 .vscode/

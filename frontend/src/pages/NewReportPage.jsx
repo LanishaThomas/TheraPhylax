@@ -111,6 +111,16 @@ export const NewReportPage = () => {
 
     setLoading(true);
     try {
+      let evidenceUrl = null;
+      if (imageFile) {
+        try {
+          const uploadRes = await apiService.uploadEvidence(imageFile);
+          evidenceUrl = uploadRes.image_url;
+        } catch (uploadErr) {
+          console.warn("Amazon S3 evidence upload notice:", uploadErr);
+        }
+      }
+
       const finalTagged = [
         ...taggedOfficers,
         ...(customOfficerTag.trim() ? [customOfficerTag.trim()] : []),
@@ -133,6 +143,8 @@ export const NewReportPage = () => {
         reporter_safe: formData.reporter_safe === "yes",
         tagged_forest_officers: finalTagged,
         forest_range: "SGNP Core Wildlife Range",
+        image_url: evidenceUrl,
+        evidence_image_url: evidenceUrl,
       };
 
       await apiService.createReport(payload);

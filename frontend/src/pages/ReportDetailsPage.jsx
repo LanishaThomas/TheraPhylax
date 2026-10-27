@@ -132,15 +132,20 @@ export const ReportDetailsPage = () => {
                 </p>
               </div>
 
-              {report.evidence_image_url && (
+              {(report.evidence_image_url || report.image_url) && (
                 <div>
-                  <h4 className="text-muted" style={{ fontSize: "0.8125rem", textTransform: "uppercase", marginBottom: "0.5rem" }}>
-                    Attached Evidence Photo
-                  </h4>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.5rem" }}>
+                    <h4 className="text-muted" style={{ fontSize: "0.8125rem", textTransform: "uppercase", margin: 0 }}>
+                      Attached Photographic Evidence
+                    </h4>
+                    <span style={{ fontSize: "0.75rem", background: "rgba(16, 185, 129, 0.12)", color: "#047857", padding: "2px 8px", borderRadius: "6px", fontWeight: 700 }}>
+                      ☁️ Amazon S3 Verified Evidence
+                    </span>
+                  </div>
                   <img
-                    src={report.evidence_image_url}
+                    src={report.evidence_image_url || report.image_url}
                     alt="Evidence"
-                    style={{ maxWidth: "100%", borderRadius: "10px", border: "1px solid var(--border-color)" }}
+                    style={{ maxWidth: "100%", maxHeight: "380px", objectFit: "cover", borderRadius: "10px", border: "1px solid var(--border-color)" }}
                   />
                 </div>
               )}

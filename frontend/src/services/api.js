@@ -1,4 +1,8 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ||
+  (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1"
+    ? ""
+    : "http://localhost:8000");
 
 export async function apiRequest(endpoint, options = {}) {
   const token = localStorage.getItem("theraphylax_auth_token");
@@ -67,6 +71,23 @@ export const apiService = {
       method: "PATCH",
       body: JSON.stringify({ status, notes }),
     });
+  },
+  uploadEvidence: async (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const token = localStorage.getItem("theraphylax_auth_token");
+    const response = await fetch(`${API_BASE_URL}/upload/evidence`, {
+      method: "POST",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.detail || "Failed to upload image evidence to Amazon S3.");
+    }
+    return response.json();
   },
 
   // Disaster Alerts & Geographic Alerting

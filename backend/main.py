@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query, Body, Depends
+from fastapi import FastAPI, HTTPException, Query, Body, Depends, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -11,6 +11,19 @@ import logging
 from decimal import Decimal
 import boto3
 from botocore.exceptions import ClientError
+from sqlalchemy.orm import Session
+
+from database import (
+    get_db,
+    init_db,
+    SessionLocal,
+    ReportDB,
+    ForestStationDB,
+    SafetyUpdateDB,
+    GeofencedAlertDB,
+    ForestDispatchDB,
+    EmergencyContactDB,
+)
 
 logger = logging.getLogger("theraphylax")
 logging.basicConfig(level=logging.INFO)
@@ -30,7 +43,7 @@ app.add_middleware(
 )
 
 # -------------------------------------------------------------
-# AWS CONFIGURATION (SNS, SES & DynamoDB User Profiles)
+# AWS CONFIGURATION (S3, SSM, SNS, SES & DynamoDB User Profiles)
 # -------------------------------------------------------------
 AWS_REGION = os.environ.get("AWS_REGION", "ap-south-1")
 AWS_SNS_TOPIC_ARN = os.environ.get(
@@ -40,6 +53,23 @@ AWS_SNS_TOPIC_ARN = os.environ.get(
 AWS_SES_SENDER = os.environ.get("AWS_SES_SENDER", "alerts@theraphylax.org")
 AWS_DYNAMODB_USERS_TABLE = os.environ.get("AWS_DYNAMODB_USERS_TABLE", "theraphylax-user-profiles")
 AWS_COGNITO_USER_POOL_ID = os.environ.get("AWS_COGNITO_USER_POOL_ID", "ap-south-1_bYXlwb8fm")
+S3_BUCKET_NAME = os.environ.get("S3_BUCKET_NAME", "theraphylax-evidence-179895364119")
+
+# AWS S3 Client for Photographic Evidence Storage
+try:
+    s3_client = boto3.client("s3", region_name=AWS_REGION)
+    logger.info(f"Connected to AWS S3 bucket: {S3_BUCKET_NAME} ({AWS_REGION})")
+except Exception as e:
+    logger.warning(f"Failed to initialize AWS S3 client: {e}")
+    s3_client = None
+
+# AWS Systems Manager (SSM) Parameter Store Client
+try:
+    ssm_client = boto3.client("ssm", region_name=AWS_REGION)
+    logger.info(f"Connected to AWS Systems Manager (SSM) Parameter Store ({AWS_REGION})")
+except Exception as e:
+    logger.warning(f"Failed to initialize AWS SSM client: {e}")
+    ssm_client = None
 
 try:
     sns_client = boto3.client("sns", region_name=AWS_REGION)
@@ -990,23 +1020,139 @@ class CitizenCreateRequest(BaseModel):
     phone: Optional[str] = "+91 98000 00000"
 
 
+@app.on_event("startup")
+def startup_event():
+    """
+    Initializes Amazon RDS PostgreSQL tables and populates baseline seed records
+    from default fixtures if database tables are currently empty.
+    """
+    logger.info("Initializing Amazon RDS PostgreSQL database tables and seeding records...")
+    try:
+        init_db({
+            "forest_stations": forest_stations_db,
+            "reports": reports_db,
+            "updates": updates_db,
+            "dispatches": forest_dispatches_db,
+            "emergency_contacts": emergency_contacts_db,
+        })
+        logger.info("Amazon RDS PostgreSQL initialized and seeded successfully.")
+    except Exception as e:
+        logger.warning(f"Database initialization notice: {e}")
+
+
 @app.get("/")
-def home():
+def home(request: Request, db: Session = Depends(get_db)):
+    accept_header = request.headers.get("accept", "")
+    if "text/html" in accept_header:
+        candidate = os.path.join(os.path.dirname(__file__), "static", "index.html")
+        if not os.path.isfile(candidate):
+            candidate = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "dist", "index.html")
+        if os.path.isfile(candidate):
+            from fastapi.responses import FileResponse
+            return FileResponse(candidate)
+
+    try:
+        rds_reports = db.query(ReportDB).count()
+        rds_stations = db.query(ForestStationDB).count()
+    except Exception:
+        rds_reports = len(reports_db)
+        rds_stations = len(forest_stations_db)
+
     return {
         "message": "TheraPhylax Multi-Role Emergency & Forest Patrol API is running!",
         "version": "0.3.0",
-        "forest_stations_count": len(forest_stations_db),
-        "active_reports": len(reports_db)
+        "forest_stations_count": rds_stations,
+        "active_reports": rds_reports,
+        "cloud_services": {
+            "compute": "Amazon EC2 (t3.micro, custom VPC)",
+            "database": "Amazon RDS PostgreSQL (db.t4g.micro)",
+            "storage": "Amazon S3 (theraphylax-evidence-179895364119)",
+            "configuration": "AWS Systems Manager (SSM) Parameter Store",
+            "monitoring": "Amazon CloudWatch (Logs & High-CPU Alarm)",
+            "budget": "AWS Budgets (Cost Limit Alert)",
+            "nosql_cache": "Amazon DynamoDB (theraphylax-user-profiles)",
+            "messaging": "Amazon SNS (TheraPhylax-HighSeverity-Alerts)",
+            "email": "Amazon SES",
+            "auth": "AWS Cognito (theraphylax-users-mumbai)"
+        }
     }
 
+
 @app.get("/health")
-def health():
+def health(db: Session = Depends(get_db)):
+    rds_ok = False
+    try:
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
+        rds_ok = True
+    except Exception as e:
+        logger.warning(f"RDS health check failed: {e}")
+
+    s3_ok = False
+    if s3_client:
+        try:
+            s3_client.head_bucket(Bucket=S3_BUCKET_NAME)
+            s3_ok = True
+        except Exception:
+            s3_ok = False
+
     return {
-        "status": "healthy",
-        "cognito_region": "ap-south-1",
+        "status": "healthy" if rds_ok else "degraded",
+        "rds_postgresql": "connected" if rds_ok else "disconnected",
+        "s3_storage": "accessible" if s3_ok else "unreachable",
+        "ssm_parameter_store": "configured" if ssm_client is not None else "unavailable",
+        "dynamodb_users": "connected" if dynamodb_users_table is not None else "disconnected",
+        "sns_broadcast": "ready" if sns_client is not None else "disabled",
+        "ses_dispatch": "ready" if ses_client is not None else "disabled",
+        "cognito_region": AWS_REGION,
         "dynamodb_table": AWS_DYNAMODB_USERS_TABLE,
-        "dynamodb_connected": dynamodb_users_table is not None
+        "s3_bucket": S3_BUCKET_NAME,
+        "rds_engine": "PostgreSQL 16 (AWS RDS)",
     }
+
+
+# -------------------------------------------------------------
+# AMAZON S3 PHOTOGRAPHIC EVIDENCE UPLOAD ENDPOINT
+# -------------------------------------------------------------
+@app.post("/upload/evidence")
+async def upload_evidence_photo(file: UploadFile = File(...)):
+    """
+    Uploads photographic evidence (wildlife sightings, animal injuries, road hazards)
+    directly to Amazon S3 bucket 'theraphylax-evidence-179895364119'.
+    """
+    if not file.content_type or not (file.content_type.startswith("image/") or file.content_type == "application/octet-stream"):
+        raise HTTPException(status_code=400, detail="Only image files (JPEG, PNG, WEBP) are accepted as photographic evidence.")
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if not ext or ext not in [".jpg", ".jpeg", ".png", ".webp"]:
+        ext = ".jpg"
+
+    s3_key = f"evidence/{uuid.uuid4().hex[:12]}{ext}"
+
+    if not s3_client:
+        raise HTTPException(status_code=500, detail="Amazon S3 client is not available on the server.")
+
+    try:
+        content = await file.read()
+        s3_client.put_object(
+            Bucket=S3_BUCKET_NAME,
+            Key=s3_key,
+            Body=content,
+            ContentType=file.content_type if file.content_type.startswith("image/") else "image/jpeg",
+        )
+        url = f"https://{S3_BUCKET_NAME}.s3.{AWS_REGION}.amazonaws.com/{s3_key}"
+        logger.info(f"Photographic evidence successfully uploaded to Amazon S3: {url}")
+        return {
+            "image_url": url,
+            "evidence_image_url": url,
+            "s3_key": s3_key,
+            "bucket": S3_BUCKET_NAME,
+            "size_bytes": len(content),
+            "status": "uploaded_to_s3"
+        }
+    except Exception as e:
+        logger.error(f"Amazon S3 upload failure: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload evidence to Amazon S3: {e}")
 
 MUMBAI_AREA_COORDINATES = {
     "borivali": (19.2290, 72.8600),
@@ -1183,42 +1329,72 @@ def get_reports(
     category: Optional[str] = None,
     status: Optional[str] = None,
     user_email: Optional[str] = None,
-    station: Optional[str] = None
+    station: Optional[str] = None,
+    db: Session = Depends(get_db),
 ):
-    res = reports_db
-    if category and category.lower() != "all":
-        res = [r for r in res if r.get("category", "").lower() == category.lower()]
-    if status and status.lower() != "all":
-        res = [r for r in res if r.get("status", "").lower() == status.lower()]
-    if user_email:
-        res = [r for r in res if r.get("user_email", "").lower() == user_email.lower()]
-    if station and station.lower() != "all":
-        res = [
-            r for r in res
-            if r.get("tagged_forest_officers") and any(station.lower() in o.lower() for o in r["tagged_forest_officers"])
-        ]
-    return res
+    try:
+        query = db.query(ReportDB)
+        if category and category.lower() != "all":
+            query = query.filter(ReportDB.category.ilike(category))
+        if status and status.lower() != "all":
+            query = query.filter(ReportDB.status.ilike(status))
+        if user_email:
+            query = query.filter(ReportDB.user_email.ilike(user_email))
+
+        records = query.order_by(ReportDB.created_at.desc()).all()
+        res = [r.to_dict() for r in records]
+
+        if station and station.lower() != "all":
+            res = [
+                r for r in res
+                if r.get("tagged_forest_officers") and any(station.lower() in o.lower() for o in r["tagged_forest_officers"])
+            ]
+        return res
+    except Exception as e:
+        logger.warning(f"Error querying RDS reports ({e}); falling back to memory.")
+        res = reports_db
+        if category and category.lower() != "all":
+            res = [r for r in res if r.get("category", "").lower() == category.lower()]
+        if status and status.lower() != "all":
+            res = [r for r in res if r.get("status", "").lower() == status.lower()]
+        if user_email:
+            res = [r for r in res if r.get("user_email", "").lower() == user_email.lower()]
+        if station and station.lower() != "all":
+            res = [
+                r for r in res
+                if r.get("tagged_forest_officers") and any(station.lower() in o.lower() for o in r["tagged_forest_officers"])
+            ]
+        return res
+
 
 @app.get("/reports/{report_id}")
-def get_report_by_id(report_id: str):
+def get_report_by_id(report_id: str, db: Session = Depends(get_db)):
+    try:
+        record = db.query(ReportDB).filter(ReportDB.id == report_id).first()
+        if record:
+            return record.to_dict()
+    except Exception as e:
+        logger.warning(f"Error querying RDS for report {report_id}: {e}")
+
     for r in reports_db:
         if r["id"] == report_id:
             return r
     raise HTTPException(status_code=404, detail="Incident report not found")
 
+
 @app.post("/reports")
-def create_report(payload: ReportCreate):
+def create_report(payload: ReportCreate, db: Session = Depends(get_db)):
     new_id = f"rep-{uuid.uuid4().hex[:6]}"
-    new_report = {
-        "id": new_id,
-        "created_at": datetime.utcnow().isoformat() + "Z",
-        "status": "Pending Review",
-        **payload.dict()
-    }
+    now_iso = datetime.utcnow().isoformat() + "Z"
+    initial_status = "Pending Review"
+
+    # Support evidence image from either field
+    evidence_url = payload.evidence_image_url
 
     # If Forest Officers are tagged or category is Injured Animal, automatically dispatch to Forest Patrol
+    dispatch_item = None
     if payload.tagged_forest_officers or payload.category == "Injured Animal":
-        new_report["status"] = "Forest Officer Dispatched"
+        initial_status = "Forest Officer Dispatched"
         dispatch_item = {
             "id": f"disp-{uuid.uuid4().hex[:6]}",
             "incident_id": new_id,
@@ -1226,24 +1402,100 @@ def create_report(payload: ReportCreate):
             "animal_type": payload.animal_type or "Wildlife Incident",
             "location_name": payload.location_name,
             "status": "Officer Dispatched",
-            "reporter_name": payload.reporter_name,
+            "reporter_name": payload.reporter_name or "Citizen Reporter",
             "reporter_phone": "+91 Verified Contact",
             "notes": payload.description,
-            "created_at": datetime.utcnow().isoformat() + "Z"
+            "created_at": now_iso
         }
-        forest_dispatches_db.insert(0, dispatch_item)
 
+    new_report = {
+        "id": new_id,
+        "created_at": now_iso,
+        "status": initial_status,
+        **payload.dict(),
+        "image_url": evidence_url,
+        "evidence_image_url": evidence_url,
+    }
+
+    # 1. Persist to Amazon RDS PostgreSQL
+    try:
+        report_record = ReportDB(
+            id=new_id,
+            title=payload.title,
+            category=payload.category,
+            severity=payload.severity,
+            status=initial_status,
+            description=payload.description,
+            location_name=payload.location_name,
+            latitude=payload.latitude,
+            longitude=payload.longitude,
+            incident_date=payload.incident_date,
+            reporter_name=payload.reporter_name or "Citizen Reporter",
+            user_email=payload.user_email or "citizen@theraphylax.org",
+            created_at=now_iso,
+            injuries_count=payload.injuries_count or 0,
+            vehicles_involved=payload.vehicles_involved or 1,
+            emergency_services_contacted=bool(payload.emergency_services_contacted),
+            animal_type=payload.animal_type,
+            animal_status=payload.animal_status,
+            reporter_safe=bool(payload.reporter_safe),
+            tagged_forest_officers=payload.tagged_forest_officers or [],
+            forest_range=payload.forest_range or "SGNP Core Wildlife Range",
+            image_url=evidence_url,
+            evidence_image_url=evidence_url,
+        )
+        db.add(report_record)
+
+        if dispatch_item:
+            dispatch_record = ForestDispatchDB(
+                id=dispatch_item["id"],
+                incident_id=new_id,
+                station_name=dispatch_item["station_name"],
+                animal_type=dispatch_item["animal_type"],
+                location_name=dispatch_item["location_name"],
+                status=dispatch_item["status"],
+                reporter_name=dispatch_item["reporter_name"],
+                reporter_phone=dispatch_item["reporter_phone"],
+                notes=dispatch_item["notes"],
+                created_at=now_iso
+            )
+            db.add(dispatch_record)
+
+        db.commit()
+        logger.info(f"Persisted report {new_id} to Amazon RDS PostgreSQL.")
+    except Exception as e:
+        logger.error(f"Error persisting report {new_id} to RDS: {e}")
+        db.rollback()
+
+    # 2. Maintain in-memory mirror
+    if dispatch_item:
+        forest_dispatches_db.insert(0, dispatch_item)
     reports_db.insert(0, new_report)
+
     return new_report
 
+
 @app.patch("/reports/{report_id}/status")
-def update_report_status(report_id: str, payload: StatusUpdate):
+def update_report_status(report_id: str, payload: StatusUpdate, db: Session = Depends(get_db)):
+    # 1. Update in Amazon RDS PostgreSQL
+    try:
+        record = db.query(ReportDB).filter(ReportDB.id == report_id).first()
+        if record:
+            record.status = payload.status
+            db.commit()
+            logger.info(f"Updated status for report {report_id} to {payload.status} in Amazon RDS.")
+    except Exception as e:
+        logger.error(f"Error updating report status in Amazon RDS: {e}")
+        db.rollback()
+
+    # 2. Update in-memory mirror
     for r in reports_db:
         if r["id"] == report_id:
             r["status"] = payload.status
             if payload.notes:
                 r["officer_notes"] = payload.notes
             return r
+
     raise HTTPException(status_code=404, detail="Report not found")
 
 # -------------------------------------------------------------
@@ -1595,48 +1847,155 @@ def test_aws_emergency_email(payload: TestEmailRequest):
 
 # Public Safety Updates Endpoints
 @app.get("/updates")
-def get_public_updates():
+def get_public_updates(db: Session = Depends(get_db)):
+    try:
+        updates = db.query(SafetyUpdateDB).order_by(SafetyUpdateDB.created_at.desc()).all()
+        if updates:
+            return [u.to_dict() for u in updates]
+    except Exception as e:
+        logger.warning(f"Error querying RDS updates: {e}")
     return updates_db
 
 @app.post("/updates")
-def create_public_update(payload: PublicUpdateCreate):
+def create_public_update(payload: PublicUpdateCreate, db: Session = Depends(get_db)):
+    new_id = f"up-{uuid.uuid4().hex[:6]}"
+    now_iso = datetime.utcnow().isoformat() + "Z"
     new_update = {
-        "id": f"up-{uuid.uuid4().hex[:6]}",
-        "created_at": datetime.utcnow().isoformat() + "Z",
+        "id": new_id,
+        "created_at": now_iso,
         **payload.dict()
     }
+    try:
+        update_obj = SafetyUpdateDB(
+            id=new_id,
+            title=payload.title,
+            category=payload.category,
+            severity=payload.severity or "Medium",
+            message=payload.message,
+            location=payload.location or "Mumbai Metropolitan Region",
+            latitude=payload.latitude or 19.2288,
+            longitude=payload.longitude or 72.8570,
+            radius_km=payload.radius_km or 3.0,
+            target_regions=payload.target_regions or ["All Regions"],
+            created_at=now_iso,
+            author=payload.author or "Forest Command Officer",
+            author_role=payload.author_role or "Forest Range Officer",
+        )
+        db.add(update_obj)
+        db.commit()
+        logger.info(f"Persisted safety update {new_id} to Amazon RDS PostgreSQL.")
+    except Exception as e:
+        logger.error(f"Error persisting update to Amazon RDS: {e}")
+        db.rollback()
+
     updates_db.insert(0, new_update)
     return new_update
 
 # Emergency Contacts
 @app.get("/emergency-contacts")
-def get_emergency_contacts():
+def get_emergency_contacts(db: Session = Depends(get_db)):
+    try:
+        contacts = db.query(EmergencyContactDB).all()
+        if contacts:
+            return [c.to_dict() for c in contacts]
+    except Exception as e:
+        logger.warning(f"Error querying RDS contacts: {e}")
     return emergency_contacts_db
 
 # Forest Stations, Districts & Dispatches
 @app.get("/forest/districts")
-def get_forest_districts():
-    districts = sorted(list(set([s["district"] for s in forest_stations_db if "district" in s])))
-    return districts
+def get_forest_districts(db: Session = Depends(get_db)):
+    try:
+        stations = db.query(ForestStationDB).all()
+        if stations:
+            return sorted(list(set([s.district for s in stations if s.district])))
+    except Exception:
+        pass
+    return sorted(list(set([s["district"] for s in forest_stations_db if "district" in s])))
 
 @app.get("/forest/stations")
-def get_forest_stations(district: Optional[str] = None):
+def get_forest_stations(district: Optional[str] = None, db: Session = Depends(get_db)):
+    try:
+        query = db.query(ForestStationDB)
+        if district and district.strip() and district.lower() != "all":
+            query = query.filter(ForestStationDB.district.ilike(district.strip()))
+        stations = query.all()
+        if stations:
+            return [s.to_dict() for s in stations]
+    except Exception as e:
+        logger.warning(f"Error querying RDS stations: {e}")
+
     if district and district.strip() and district.lower() != "all":
         return [s for s in forest_stations_db if s.get("district", "").lower() == district.strip().lower()]
     return forest_stations_db
 
 @app.get("/forest/dispatches")
-def get_forest_dispatches():
+def get_forest_dispatches(db: Session = Depends(get_db)):
+    try:
+        dispatches = db.query(ForestDispatchDB).order_by(ForestDispatchDB.created_at.desc()).all()
+        if dispatches:
+            return [d.to_dict() for d in dispatches]
+    except Exception as e:
+        logger.warning(f"Error querying RDS dispatches: {e}")
     return forest_dispatches_db
 
 @app.get("/dashboard/stats")
-def get_dashboard_stats():
-    return {
-        "total_reports": len(reports_db),
-        "open_reports": len([r for r in reports_db if r["status"] not in ["Resolved", "Dismissed"]]),
-        "resolved_reports": len([r for r in reports_db if r["status"] == "Resolved"]),
-        "active_alerts": len(alerts_db),
-        "active_updates": len(updates_db),
-        "forest_stations": len(forest_stations_db),
-        "dispatched_forest_patrols": len([d for d in forest_dispatches_db if d["status"] == "Officer Dispatched"])
-    }
+def get_dashboard_stats(db: Session = Depends(get_db)):
+    try:
+        total_rep = db.query(ReportDB).count()
+        open_rep = db.query(ReportDB).filter(~ReportDB.status.in_(["Resolved", "Dismissed"])).count()
+        resolved_rep = db.query(ReportDB).filter(ReportDB.status == "Resolved").count()
+        active_alt = db.query(GeofencedAlertDB).count()
+        active_up = db.query(SafetyUpdateDB).count()
+        stations = db.query(ForestStationDB).count()
+        dispatches = db.query(ForestDispatchDB).filter(ForestDispatchDB.status == "Officer Dispatched").count()
+        return {
+            "total_reports": total_rep,
+            "open_reports": open_rep,
+            "resolved_reports": resolved_rep,
+            "active_alerts": active_alt,
+            "active_updates": active_up,
+            "forest_stations": stations,
+            "dispatched_forest_patrols": dispatches
+        }
+    except Exception as e:
+        logger.warning(f"RDS stats fallback: {e}")
+        return {
+            "total_reports": len(reports_db),
+            "open_reports": len([r for r in reports_db if r["status"] not in ["Resolved", "Dismissed"]]),
+            "resolved_reports": len([r for r in reports_db if r["status"] == "Resolved"]),
+            "active_alerts": len(alerts_db),
+            "active_updates": len(updates_db),
+            "forest_stations": len(forest_stations_db),
+            "dispatched_forest_patrols": len([d for d in forest_dispatches_db if d["status"] == "Officer Dispatched"])
+        }
+
+# -------------------------------------------------------------
+# FRONTEND STATIC FILES & SPA ROUTING (FOR CLOUD DEPLOYMENT)
+# -------------------------------------------------------------
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+if not os.path.exists(STATIC_DIR):
+    candidate = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend", "dist")
+    if os.path.exists(candidate):
+        STATIC_DIR = candidate
+
+if os.path.exists(STATIC_DIR):
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse
+
+    assets_path = os.path.join(STATIC_DIR, "assets")
+    if os.path.exists(assets_path):
+        app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
+
+    @app.get("/{full_path:path}")
+    def serve_frontend_spa(full_path: str):
+        if full_path.startswith(("api/", "docs", "redoc", "openapi.json")):
+            raise HTTPException(status_code=404, detail="Not Found")
+        file_path = os.path.join(STATIC_DIR, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        index_file = os.path.join(STATIC_DIR, "index.html")
+        if os.path.isfile(index_file):
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="Frontend index.html not found")
+
