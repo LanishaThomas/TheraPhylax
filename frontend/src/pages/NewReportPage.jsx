@@ -12,6 +12,7 @@ import {
   Heart,
 } from "lucide-react";
 import { apiService } from "../services/api";
+import { useAuth } from "../contexts/AuthContext";
 import { LocationPickerMap } from "../components/ui/LocationPickerMap";
 import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
@@ -19,6 +20,7 @@ import { AlertMessage } from "../components/ui/AlertMessage";
 
 export const NewReportPage = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   const [formData, setFormData] = useState({
     title: "",
@@ -126,6 +128,16 @@ export const NewReportPage = () => {
         ...(customOfficerTag.trim() ? [customOfficerTag.trim()] : []),
       ];
 
+      const userEmail =
+        user?.email ||
+        (typeof window !== "undefined" && JSON.parse(localStorage.getItem("theraphylax_user") || "{}")?.email) ||
+        "citizen@theraphylax.org";
+
+      const userName =
+        user?.name ||
+        (typeof window !== "undefined" && JSON.parse(localStorage.getItem("theraphylax_user") || "{}")?.name) ||
+        "Citizen Reporter";
+
       const payload = {
         title: formData.title,
         category: formData.category,
@@ -145,6 +157,8 @@ export const NewReportPage = () => {
         forest_range: "SGNP Core Wildlife Range",
         image_url: evidenceUrl,
         evidence_image_url: evidenceUrl,
+        user_email: userEmail,
+        reporter_name: userName,
       };
 
       await apiService.createReport(payload);

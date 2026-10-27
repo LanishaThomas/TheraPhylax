@@ -1339,7 +1339,17 @@ def get_reports(
         if status and status.lower() != "all":
             query = query.filter(ReportDB.status.ilike(status))
         if user_email:
-            query = query.filter(ReportDB.user_email.ilike(user_email))
+            email_clean = user_email.strip().lower()
+            if email_clean in ["citizen@theraphylax.org", ""]:
+                query = query.filter(ReportDB.user_email.ilike("citizen@theraphylax.org"))
+            else:
+                from sqlalchemy import or_
+                query = query.filter(
+                    or_(
+                        ReportDB.user_email.ilike(email_clean),
+                        ReportDB.user_email.ilike("citizen@theraphylax.org")
+                    )
+                )
 
         records = query.order_by(ReportDB.created_at.desc()).all()
         res = [r.to_dict() for r in records]
@@ -1358,7 +1368,14 @@ def get_reports(
         if status and status.lower() != "all":
             res = [r for r in res if r.get("status", "").lower() == status.lower()]
         if user_email:
-            res = [r for r in res if r.get("user_email", "").lower() == user_email.lower()]
+            email_clean = user_email.strip().lower()
+            if email_clean in ["citizen@theraphylax.org", ""]:
+                res = [r for r in res if r.get("user_email", "").strip().lower() == "citizen@theraphylax.org"]
+            else:
+                res = [
+                    r for r in res
+                    if r.get("user_email", "").strip().lower() in [email_clean, "citizen@theraphylax.org"]
+                ]
         if station and station.lower() != "all":
             res = [
                 r for r in res

@@ -43,7 +43,6 @@ export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
       { label: "Geofence Notifications", path: "/notifications", icon: Bell, color: "#EF4444" },
       { label: "Targeted Geo-Alerts", path: "/alerts", icon: AlertTriangle, color: "#FBBF24" },
       { label: "Public Safety Updates", path: "/updates", icon: Compass, color: "#34D399" },
-      { label: "Publish Safety Advisory", path: "/officer/updates/create", icon: Send, color: "#C084FC" },
       { label: "Animal & Safety News", path: "/news", icon: Newspaper, color: "#FBBF24" },
       { label: "My Profile", path: "/profile", icon: User, color: "#9CA3AF" },
     ];

@@ -17,4 +17,7 @@ backend/static/
 # IDE and operating system
 .vscode/
 .DS_Store
-Thumbs.db
+Thumbs.db
+*.db
+*.sqlite3
+

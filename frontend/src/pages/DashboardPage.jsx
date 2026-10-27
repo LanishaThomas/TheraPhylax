@@ -80,7 +80,7 @@ export const DashboardPage = () => {
                 Report an Incident
               </Button>
             </Link>
-            <Link to="/reports">
+            <Link to="/accidents/my-reports">
               <Button variant="secondary" icon={FileText}>
                 View My Reports
               </Button>

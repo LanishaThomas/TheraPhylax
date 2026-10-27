@@ -34,7 +34,11 @@ export const MyReportsPage = () => {
     setLoading(true);
     setError("");
     try {
-      const data = await apiService.getMyReports(user?.email);
+      const activeEmail =
+        user?.email ||
+        (typeof window !== "undefined" && JSON.parse(localStorage.getItem("theraphylax_user") || "{}")?.email) ||
+        "citizen@theraphylax.org";
+      const data = await apiService.getMyReports(activeEmail);
       const list = Array.isArray(data) ? data : data?.reports || [];
       setReports(list);
     } catch (err) {
