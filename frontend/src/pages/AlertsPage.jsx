@@ -79,11 +79,13 @@ export const AlertsPage = () => {
             </Link>
           )}
 
-          <Link to="/notifications">
-            <Button variant="outline" icon={Bell}>
-              My Notifications Hub
-            </Button>
-          </Link>
+          {isOfficer && (
+            <Link to="/notifications">
+              <Button variant="outline" icon={Bell}>
+                My Notifications Hub
+              </Button>
+            </Link>
+          )}
 
           <Button variant="outline" icon={RefreshCw} onClick={fetchAlerts} disabled={loading}>
             Refresh

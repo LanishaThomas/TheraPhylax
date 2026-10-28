@@ -61,10 +61,9 @@ export const Sidebar = ({ mobileOpen, setMobileOpen }) => {
       { label: "My Profile", path: "/profile", icon: User, color: "#9CA3AF" },
     ];
   } else {
-    // Default Citizen Role
+    // Default Citizen Role (Notifications tab removed as requested; alerts and updates are available in other tabs)
     navItems = [
       { label: "Citizen Dashboard", path: "/dashboard", icon: LayoutDashboard, color: "#34D399" },
-      { label: "My Notifications", path: "/notifications", icon: Bell, color: "#EF4444" },
       { label: "Report Incident / Accident", path: "/accidents/report", icon: FilePlus, color: "#F87171" },
       { label: "My Submitted Reports", path: "/accidents/my-reports", icon: FileText, color: "#60A5FA" },
       { label: "Public Safety Updates", path: "/updates", icon: Compass, color: "#34D399" },

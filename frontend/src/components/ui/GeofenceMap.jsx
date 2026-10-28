@@ -62,7 +62,7 @@ export const GeofenceMap = ({
         weight: 2.5,
         badgeBg: "#D1FAE5",
         badgeText: "#065F46",
-        label: "Low Priority Geofence (In-App Only)",
+        label: "Low Advisory Geofence (Green / Informational)",
       };
     }
     if (sev === "medium") {
@@ -74,18 +74,30 @@ export const GeofenceMap = ({
         weight: 3.0,
         badgeBg: "#FEF3C7",
         badgeText: "#92400E",
-        label: "Medium Priority Geofence (In-App Only)",
+        label: "Medium Hazard Geofence (Amber Zone)",
+      };
+    }
+    if (sev === "high") {
+      return {
+        color: "#EA580C",
+        fillColor: "#EA580C",
+        fillOpacity: 0.22,
+        dashArray: "8, 6",
+        weight: 3.2,
+        badgeBg: "#FFEDD5",
+        badgeText: "#C2410C",
+        label: "High Caution Geofence (Orange Zone)",
       };
     }
     return {
-      color: "#EF4444",
-      fillColor: "#EF4444",
-      fillOpacity: 0.24,
+      color: "#DC2626",
+      fillColor: "#DC2626",
+      fillOpacity: 0.25,
       dashArray: "8, 6",
       weight: 3.5,
       badgeBg: "#FEE2E2",
       badgeText: "#991B1B",
-      label: "Critical Geofence (In-App + Gmail Notification via AWS)",
+      label: "Critical Danger Geofence (Red Zone)",
     };
   };
 
@@ -206,7 +218,15 @@ export const GeofenceMap = ({
       });
     }
 
+    // Invalidate map size after rendering to ensure complete tile coverage
+    const timer = setTimeout(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    }, 250);
+
     return () => {
+      clearTimeout(timer);
       if (mapInstanceRef.current) {
         mapInstanceRef.current.remove();
         mapInstanceRef.current = null;
@@ -226,10 +246,16 @@ export const GeofenceMap = ({
         weight: currentStyle.weight,
         dashArray: currentStyle.dashArray,
       });
+      circleRef.current.setTooltipContent(
+        `<strong>Exact Fenced Perimeter:</strong> ${radius} km radius<br/><span style="font-size:11px;">${currentStyle.label}</span>`
+      );
     }
     if (markerRef.current) {
       markerRef.current.setLatLng([lat, lng]);
       markerRef.current.setIcon(createEpicenterIcon());
+    }
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.panTo([lat, lng]);
     }
   }, [lat, lng, radius, severity]);
 

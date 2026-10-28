@@ -29,8 +29,11 @@ DEFAULT_RDS_URL = os.environ.get(
 
 def resolve_database_url() -> str:
     """
-    Retrieves the PostgreSQL connection string securely from AWS Systems Manager (SSM)
-    Parameter Store under '/theraphylax/db/url'. Falls back to environment variable or default RDS.
+    Retrieves the PostgreSQL connection string securely:
+    1. AWS Secrets Manager ('theraphylax/rds/credentials')
+    2. AWS Systems Manager Parameter Store ('/theraphylax/db/url')
+    3. Environment variable override
+    4. Default RDS URL fallback
     """
     url = None
 
@@ -40,7 +43,29 @@ def resolve_database_url() -> str:
         logger.info("Using DATABASE_URL from environment variable.")
         url = env_url
 
-    # 2. Attempt fetching from AWS Systems Manager Parameter Store
+    # 2. Attempt fetching from AWS Secrets Manager (Best Practice)
+    if not url:
+        try:
+            import boto3
+            sm = boto3.client("secretsmanager", region_name=AWS_REGION)
+            resp = sm.get_secret_value(SecretId="theraphylax/rds/credentials")
+            secret_str = resp.get("SecretString")
+            if secret_str:
+                secret_json = json.loads(secret_str)
+                if "url" in secret_json:
+                    url = secret_json["url"]
+                elif "host" in secret_json and "username" in secret_json and "password" in secret_json:
+                    u = secret_json["username"]
+                    p = secret_json["password"]
+                    h = secret_json["host"]
+                    port = secret_json.get("port", 5432)
+                    d = secret_json.get("dbname", "theraphylax")
+                    url = f"postgresql+psycopg2://{u}:{p}@{h}:{port}/{d}"
+                logger.info("Successfully retrieved database credentials from AWS Secrets Manager (theraphylax/rds/credentials).")
+        except Exception as e:
+            logger.warning(f"Could not retrieve credentials from AWS Secrets Manager ({e}). Trying SSM Parameter Store...")
+
+    # 3. Attempt fetching from AWS Systems Manager Parameter Store
     if not url:
         try:
             import boto3
@@ -110,10 +135,19 @@ class ReportDB(Base):
     reporter_safe = Column(Boolean, default=True)
     tagged_forest_officers = Column(JSON, default=list)
     forest_range = Column(String(150), default="SGNP Core Wildlife Range")
-    image_url = Column(String(500), nullable=True)
-    evidence_image_url = Column(String(500), nullable=True)
+    image_url = Column(Text, nullable=True)
+    evidence_image_url = Column(Text, nullable=True)
 
     def to_dict(self):
+        img = self.image_url
+        if img and (".amazonaws.com/" in img or "theraphylax-evidence-" in img):
+            k = img.split(".amazonaws.com/")[1].lstrip("/") if ".amazonaws.com/" in img else img.lstrip("/")
+            img = f"/evidence/{k}"
+        ev_img = self.evidence_image_url or self.image_url
+        if ev_img and (".amazonaws.com/" in ev_img or "theraphylax-evidence-" in ev_img):
+            k = ev_img.split(".amazonaws.com/")[1].lstrip("/") if ".amazonaws.com/" in ev_img else ev_img.lstrip("/")
+            ev_img = f"/evidence/{k}"
+
         return {
             "id": self.id,
             "title": self.title,
@@ -136,8 +170,9 @@ class ReportDB(Base):
             "reporter_safe": self.reporter_safe,
             "tagged_forest_officers": self.tagged_forest_officers or [],
             "forest_range": self.forest_range,
-            "image_url": self.image_url,
-            "evidence_image_url": self.evidence_image_url or self.image_url,
+            "image_url": img,
+            "evidence_image_url": ev_img,
+            "raw_s3_url": self.evidence_image_url or self.image_url,
         }
 
 
@@ -150,8 +185,8 @@ class ForestStationDB(Base):
     district = Column(String(100), nullable=False)
     contact_person = Column(String(150), nullable=False)
     phone = Column(String(50), nullable=False)
-    radio_frequency = Column(String(50), nullable=True)
-    response_time = Column(String(50), nullable=True)
+    radio_frequency = Column(String(50), default="156.800 MHz")
+    response_time = Column(String(50), default="10 - 15 Mins")
     coverage_sectors = Column(JSON, default=list)
     available = Column(Boolean, default=True)
     latitude = Column(Float, nullable=False)
@@ -300,6 +335,92 @@ class EmergencyContactDB(Base):
         }
 
 
+class NotificationDB(Base):
+    __tablename__ = "notifications"
+
+    id = Column(String(64), primary_key=True, index=True)
+    alert_id = Column(String(64), index=True, nullable=True)
+    user_email = Column(String(150), index=True, nullable=False)
+    user_name = Column(String(150), nullable=True)
+    title = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    severity = Column(String(50), default="High")
+    priority_label = Column(String(50), default="High Priority")
+    priority_color = Column(String(50), default="#EF4444")
+    category = Column(String(100), default="Wildlife Safety")
+    location_name = Column(String(255), nullable=True)
+    alert_latitude = Column(Float, nullable=True)
+    alert_longitude = Column(Float, nullable=True)
+    alert_radius_km = Column(Float, nullable=True)
+    user_distance_km = Column(Float, nullable=True)
+    email_dispatched = Column(Boolean, default=False)
+    email_status = Column(String(255), nullable=True)
+    channels = Column(JSON, default=list)
+    is_read = Column(Boolean, default=False)
+    created_at = Column(String(64), default=lambda: datetime.utcnow().isoformat() + "Z")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "alert_id": self.alert_id,
+            "user_email": self.user_email,
+            "user_name": self.user_name,
+            "title": self.title,
+            "message": self.message,
+            "severity": self.severity,
+            "priority_label": self.priority_label,
+            "priority_color": self.priority_color,
+            "category": self.category,
+            "channels": self.channels or ["app"],
+            "location_name": self.location_name,
+            "alert_latitude": self.alert_latitude,
+            "alert_longitude": self.alert_longitude,
+            "alert_radius_km": self.alert_radius_km,
+            "user_distance_km": self.user_distance_km,
+            "email_dispatched": self.email_dispatched,
+            "email_status": self.email_status,
+            "is_read": self.is_read,
+            "created_at": self.created_at,
+        }
+
+
+class UserDB(Base):
+    __tablename__ = "users"
+
+    id = Column(String(64), primary_key=True, index=True)
+    name = Column(String(150), nullable=False)
+    email = Column(String(150), unique=True, index=True, nullable=False)
+    role = Column(String(50), default="Citizen")
+    department = Column(String(150), nullable=True)
+    badge_number = Column(String(50), nullable=True)
+    assigned_station = Column(String(255), nullable=True)
+    phone = Column(String(50), nullable=True)
+    district = Column(String(100), nullable=True)
+    city = Column(String(100), default="Mumbai")
+    address = Column(String(255), nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    created_at = Column(String(64), default=lambda: datetime.utcnow().isoformat() + "Z")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "email": self.email,
+            "role": self.role,
+            "department": self.department,
+            "badge_number": self.badge_number,
+            "assigned_station": self.assigned_station,
+            "phone": self.phone,
+            "district": self.district,
+            "city": self.city,
+            "address": self.address,
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "created_at": self.created_at,
+        }
+
+
 def get_db() -> Generator[Session, None, None]:
     """FastAPI Dependency for database sessions."""
     if SessionLocal is None:
@@ -362,6 +483,20 @@ def init_db(seed_data: dict = None):
                     db.add(EmergencyContactDB(**item))
                 db.commit()
                 logger.info("Seeded emergency contacts to Amazon RDS.")
+
+            # 6. Seed Geofenced Alerts if empty
+            if db.query(GeofencedAlertDB).count() == 0 and "alerts" in seed_data:
+                for item in seed_data["alerts"]:
+                    db.add(GeofencedAlertDB(**item))
+                db.commit()
+                logger.info("Seeded initial geofenced alerts to Amazon RDS.")
+
+            # 7. Seed Registered Users if empty
+            if db.query(UserDB).count() == 0 and "users" in seed_data:
+                for item in seed_data["users"]:
+                    db.add(UserDB(**item))
+                db.commit()
+                logger.info("Seeded initial users to Amazon RDS.")
 
         finally:
             db.close()

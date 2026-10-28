@@ -1,8 +1,15 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ||
-  (typeof window !== "undefined" && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1"
-    ? ""
-    : "http://localhost:8000");
+export function getApiBaseUrl() {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    // In production or when hosted on EC2 (e.g. 35.154.29.23), always use relative URL so calls route to the live FastAPI backend
+    if (host && host !== "localhost" && host !== "127.0.0.1") {
+      return "";
+    }
+  }
+  return import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+}
+
+export const API_BASE_URL = getApiBaseUrl();
 
 export async function apiRequest(endpoint, options = {}) {
   const token = localStorage.getItem("theraphylax_auth_token");
@@ -18,7 +25,8 @@ export async function apiRequest(endpoint, options = {}) {
     headers,
   };
 
-  const url = `${API_BASE_URL}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  const baseUrl = getApiBaseUrl();
+  const url = `${baseUrl}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
 
   try {
     const response = await fetch(url, config);
@@ -76,7 +84,7 @@ export const apiService = {
     const formData = new FormData();
     formData.append("file", file);
     const token = localStorage.getItem("theraphylax_auth_token");
-    const response = await fetch(`${API_BASE_URL}/upload/evidence`, {
+    const response = await fetch(`${getApiBaseUrl()}/upload/evidence`, {
       method: "POST",
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),

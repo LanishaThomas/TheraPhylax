@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Info,
@@ -19,6 +19,7 @@ import { Button } from "../components/ui/Button";
 import { Card } from "../components/ui/Card";
 import { AlertMessage } from "../components/ui/AlertMessage";
 import { AiWritingAssistant } from "../components/ui/AiWritingAssistant";
+import { GeofenceMap } from "../components/ui/GeofenceMap";
 
 const AVAILABLE_REGIONS = [
   "All Regions",
@@ -143,6 +144,22 @@ export const CreatePublicUpdatePage = () => {
     }));
   };
 
+  const handleMapLocationChange = ({ latitude, longitude, locationName }) => {
+    setFormData((prev) => ({
+      ...prev,
+      latitude: parseFloat(latitude) || prev.latitude,
+      longitude: parseFloat(longitude) || prev.longitude,
+      location: locationName || prev.location,
+    }));
+  };
+
+  const handleMapRadiusChange = (newRadius) => {
+    setFormData((prev) => ({
+      ...prev,
+      radius_km: parseFloat(newRadius) || prev.radius_km,
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
@@ -159,17 +176,17 @@ export const CreatePublicUpdatePage = () => {
 
     setLoading(true);
     try {
-      await apiService.createPublicUpdate({
+      const res = await apiService.createPublicUpdate({
         ...formData,
-        radius_km: parseFloat(formData.radius_km) || 3.0,
-        latitude: parseFloat(formData.latitude) || 11.6054,
-        longitude: parseFloat(formData.longitude) || 76.083,
+        radius_km: parseFloat(formData.radius_km) || 3.5,
+        latitude: parseFloat(formData.latitude) || 19.2288,
+        longitude: parseFloat(formData.longitude) || 72.8570,
       });
 
       setSuccess(true);
       setTimeout(() => {
         navigate("/updates");
-      }, 1500);
+      }, 2000);
     } catch (err) {
       setError(err.message || "Failed to publish geofenced public update.");
     } finally {
@@ -433,6 +450,51 @@ export const CreatePublicUpdatePage = () => {
                   {loc.name}
                 </button>
               ))}
+            </div>
+
+            {/* INTERACTIVE GEOFENCE MAP WITH DYNAMIC RADIUS PERIMETER */}
+            <div style={{ marginBottom: "1.25rem" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "0.5rem",
+                  flexWrap: "wrap",
+                  gap: "0.5rem",
+                }}
+              >
+                <span style={{ fontSize: "0.8125rem", fontWeight: 700, color: "var(--primary-green)", display: "flex", alignItems: "center", gap: "0.375rem" }}>
+                  <Layers size={15} /> Interactive Spatial Geofence Perimeter
+                </span>
+                <span style={{ fontSize: "0.75rem", color: "var(--muted-text)" }}>
+                  Radius: <strong style={{ color: "var(--primary-green)" }}>{formData.radius_km} km</strong> (live synced to size adjusting bar)
+                </span>
+              </div>
+
+              <div
+                style={{
+                  borderRadius: "14px",
+                  overflow: "hidden",
+                  border: "1.5px solid var(--border-color)",
+                  boxShadow: "0 2px 10px rgba(0,0,0,0.06)",
+                }}
+              >
+                <GeofenceMap
+                  latitude={formData.latitude}
+                  longitude={formData.longitude}
+                  radiusKm={formData.radius_km}
+                  severity={formData.severity}
+                  locationName={formData.location}
+                  onLocationChange={handleMapLocationChange}
+                  onRadiusChange={handleMapRadiusChange}
+                  interactive={true}
+                  height="360px"
+                />
+              </div>
+              <p style={{ fontSize: "0.75rem", color: "var(--muted-text)", marginTop: "0.375rem", marginInline: "0.25rem" }}>
+                💡 <em>Click anywhere on the map or drag the epicenter pin to relocate the broadcast landmark. The perimeter circle dynamically resizes as you adjust the radius bar above.</em>
+              </p>
             </div>
 
             <div className="grid-cols-2" style={{ gap: "1rem" }}>

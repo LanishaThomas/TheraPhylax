@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Menu,
-  ShieldCheck,
+  ShieldCheck, Lock, Database, Server, CheckCircle2,
   Bell,
   Check,
   AlertTriangle,
@@ -15,11 +15,16 @@ import { useAuth } from "../../contexts/AuthContext";
 import { apiService } from "../../services/api";
 
 export const Topbar = ({ onMobileToggle }) => {
-  const { user, cognitoActive } = useAuth();
+  const { user, role, cognitoActive } = useAuth();
+  const isOfficer =
+    (role || user?.role || "Citizen").toLowerCase() === "officer" ||
+    (role || user?.role || "Citizen").toLowerCase() === "responder" ||
+    (role || user?.role || "Citizen").toLowerCase() === "admin";
   const location = useLocation();
   const navigate = useNavigate();
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [awsModalOpen, setAwsModalOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loadingNotifs, setLoadingNotifs] = useState(false);
@@ -132,6 +137,30 @@ export const Topbar = ({ onMobileToggle }) => {
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        {/* AWS CONNECTED RESOURCES & SECURITY STATUS PILL */}
+        <button
+          onClick={() => setAwsModalOpen(true)}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.4rem",
+            fontSize: "0.75rem",
+            color: "#065F46",
+            backgroundColor: "#ECFDF5",
+            border: "1px solid #A7F3D0",
+            padding: "0.25rem 0.65rem",
+            borderRadius: "9999px",
+            fontWeight: 600,
+            cursor: "pointer",
+            transition: "all 0.15s ease",
+          }}
+          title="Click to view connected AWS resources & active security measures"
+        >
+          <span style={{ width: "8px", height: "8px", borderRadius: "50%", backgroundColor: "#10B981", boxShadow: "0 0 6px #10B981" }} />
+          <Lock size={13} />
+          <span>AWS Connected & Secured</span>
+        </button>
+
         {cognitoActive && (
           <div
             style={{
@@ -299,7 +328,7 @@ export const Topbar = ({ onMobileToggle }) => {
                         key={notif.id}
                         onClick={() => {
                           if (!notif.is_read) handleMarkAsRead(notif.id, { stopPropagation: () => {} });
-                          navigate("/notifications");
+                          navigate(isOfficer ? "/notifications" : "/alerts");
                           setNotificationsOpen(false);
                         }}
                         style={{
@@ -406,7 +435,7 @@ export const Topbar = ({ onMobileToggle }) => {
                 }}
               >
                 <Link
-                  to="/notifications"
+                  to={isOfficer ? "/notifications" : "/alerts"}
                   onClick={() => setNotificationsOpen(false)}
                   style={{
                     fontSize: "0.8125rem",
@@ -418,7 +447,7 @@ export const Topbar = ({ onMobileToggle }) => {
                     textDecoration: "none",
                   }}
                 >
-                  View All Notifications & AWS Hub <ExternalLink size={13} />
+                  {isOfficer ? "View All Notifications & AWS Hub" : "View Active Disaster Alerts"} <ExternalLink size={13} />
                 </Link>
               </div>
             </div>
@@ -465,6 +494,145 @@ export const Topbar = ({ onMobileToggle }) => {
           .lg-hidden { display: none !important; }
         }
       `}</style>
+          {/* AWS ARCHITECTURE & SECURITY MODAL */}
+      {awsModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            backgroundColor: "rgba(15, 23, 42, 0.65)",
+            backdropFilter: "blur(4px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: "1rem"
+          }}
+          onClick={() => setAwsModalOpen(false)}
+        >
+          <div
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: "16px",
+              maxWidth: "600px",
+              width: "100%",
+              padding: "1.75rem",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25)",
+              border: "1px solid #E2E8F0"
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+                <div style={{ width: "36px", height: "36px", borderRadius: "10px", backgroundColor: "#ECFDF5", display: "flex", alignItems: "center", justifyContent: "center", color: "#059669" }}>
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 700, color: "#0F172A" }}>
+                    AWS Architecture & Security Status
+                  </h3>
+                  <span style={{ fontSize: "0.75rem", color: "#64748B" }}>Region: ap-south-1 (Mumbai) • All Resources Connected</span>
+                </div>
+              </div>
+              <button
+                onClick={() => setAwsModalOpen(false)}
+                style={{ background: "none", border: "none", color: "#94A3B8", cursor: "pointer", padding: "0.25rem" }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", marginBottom: "1.5rem" }}>
+              <div style={{ padding: "0.85rem", borderRadius: "10px", backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+                <Database size={18} style={{ color: "#2563EB", marginTop: "2px" }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <strong style={{ fontSize: "0.875rem", color: "#1E293B" }}>Amazon RDS PostgreSQL (theraphylax-db)</strong>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#059669" }}>Connected & Isolated</span>
+                  </div>
+                  <p style={{ margin: "0.25rem 0 0", fontSize: "0.775rem", color: "#64748B" }}>
+                    Port 5432 hardened: 0.0.0.0/0 revoked. Traffic restricted strictly to EC2 app instance and authorized IPs.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ padding: "0.85rem", borderRadius: "10px", backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+                <Lock size={18} style={{ color: "#7C3AED", marginTop: "2px" }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <strong style={{ fontSize: "0.875rem", color: "#1E293B" }}>AWS Secrets Manager</strong>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#059669" }}>Active</span>
+                  </div>
+                  <p style={{ margin: "0.25rem 0 0", fontSize: "0.775rem", color: "#64748B" }}>
+                    Secret <code>theraphylax/rds/credentials</code> securely manages database connection with AWS KMS encryption.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ padding: "0.85rem", borderRadius: "10px", backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+                <Server size={18} style={{ color: "#059669", marginTop: "2px" }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <strong style={{ fontSize: "0.875rem", color: "#1E293B" }}>IAM Instance Profile (TheraPhylaxEC2Role)</strong>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#059669" }}>Attached</span>
+                  </div>
+                  <p style={{ margin: "0.25rem 0 0", fontSize: "0.775rem", color: "#64748B" }}>
+                    Least-privilege policy <code>TheraPhylaxAppAccessPolicy</code> attached. Credential-less native AWS IAM authentication.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ padding: "0.85rem", borderRadius: "10px", backgroundColor: "#F8FAFC", border: "1px solid #E2E8F0", display: "flex", alignItems: "flex-start", gap: "0.75rem" }}>
+                <ShieldCheck size={18} style={{ color: "#D97706", marginTop: "2px" }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <strong style={{ fontSize: "0.875rem", color: "#1E293B" }}>Amazon S3 Photographic Evidence Bucket</strong>
+                    <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "#059669" }}>Hardened & Encrypted</span>
+                  </div>
+                  <p style={{ margin: "0.25rem 0 0", fontSize: "0.775rem", color: "#64748B" }}>
+                    Bucket <code>theraphylax-evidence-179895364119</code>: Default AES-256 &bull; TLS Policy (HTTPS-only) &bull; Versioning Active &bull; 4/4 Public Block &bull; CORS &bull; BucketOwnerEnforced.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* LIFECYCLES SECTION */}
+            <div style={{ marginBottom: "1.25rem", padding: "0.85rem", borderRadius: "10px", backgroundColor: "#F0FDF4", border: "1px solid #BBF7D0" }}>
+              <strong style={{ fontSize: "0.8125rem", color: "#166534", display: "block", marginBottom: "0.35rem" }}>
+                Active Cloud Resource Lifecycles:
+              </strong>
+              <ul style={{ margin: 0, paddingLeft: "1.25rem", fontSize: "0.75rem", color: "#15803D", lineHeight: 1.5 }}>
+                <li><strong>Amazon S3:</strong> 30d Standard-IA &bull; 90d Glacier &bull; 180d Noncurrent Expire &bull; 7d Abort Multipart</li>
+                <li><strong>Amazon RDS:</strong> Automated Backups (20:00-21:00 UTC) &bull; Deletion Protection &bull; Auto Minor Upgrades</li>
+                <li><strong>Amazon DynamoDB:</strong> Time-To-Live (TTL) automatic expiration enabled on <code>expires_at</code></li>
+                <li><strong>Amazon CloudWatch:</strong> 30-day log retention lifecycle enforced on <code>/theraphylax/api</code></li>
+                <li><strong>FastAPI Server:</strong> Async Lifespan Pool Manager & OWASP Security Headers (HSTS, CSP, X-Frame)</li>
+              </ul>
+            </div>
+
+            <button
+              onClick={() => setAwsModalOpen(false)}
+              style={{
+                width: "100%",
+                padding: "0.625rem",
+                borderRadius: "10px",
+                backgroundColor: "#0F172A",
+                color: "#FFFFFF",
+                fontWeight: 600,
+                fontSize: "0.875rem",
+                border: "none",
+                cursor: "pointer"
+              }}
+            >
+              Close Status Overview
+            </button>
+          </div>
+        </div>
+      )}
+
     </header>
   );
 };

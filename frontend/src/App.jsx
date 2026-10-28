@@ -77,7 +77,7 @@ function App() {
 
             {/* Alerts & Notifications */}
             <Route path="/alerts" element={<AlertsPage />} />
-            <Route path="/notifications" element={<NotificationsPage />} />
+            <Route path="/notifications" element={<RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}><NotificationsPage /></RoleGuard>} />
             <Route path="/officer/alerts/create" element={<RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}><CreateGeographicAlertPage /></RoleGuard>} />
             <Route path="/alerts/create-geographic" element={<RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}><CreateGeographicAlertPage /></RoleGuard>} />
             <Route path="/officer/geofence" element={<RoleGuard allowedRoles={["Officer", "Responder", "Admin"]}><CreateGeographicAlertPage /></RoleGuard>} />

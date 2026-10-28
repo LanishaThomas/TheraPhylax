@@ -70,13 +70,26 @@ export const ProfilePage = () => {
     "Mumbai Suburban", "Mumbai City", "Thane", "Navi Mumbai", "Palghar", "Raigad"
   ];
 
-  const [district, setDistrict] = useState(user?.district || "Mumbai Suburban");
+  const DEFAULT_STATIONS_FALLBACK = [
+    { id: "fs-1", name: "Sanjay Gandhi National Park (SGNP) Range Office (Borivali East)", range: "SGNP Core Wildlife Range", district: "Mumbai Suburban" },
+    { id: "fs-2", name: "Aarey Milk Colony Wildlife Leopard Rescue & Transit Post (Goregaon)", range: "Aarey Forest & Wildlife Transit Range", district: "Mumbai Suburban" },
+    { id: "fs-3", name: "Tulsi & Vihar Lake Catchment Protection Post (Mulund / Powai)", range: "Eastern Water Catchment Range", district: "Mumbai Suburban" },
+    { id: "fs-4", name: "Mumbai Mangrove Conservation Cell & Marine Rescue Post (Bandra / Versova)", range: "Coastal Mangrove Range", district: "Mumbai Suburban" },
+    { id: "fs-5", name: "Yeoor Hills Forest Range Station & Flying Squad (Thane West)", range: "Yeoor Wildlife Range", district: "Thane" },
+    { id: "fs-6", name: "Ghodbunder Road Forest Beat & Leopard Response Squad (Thane)", range: "Ghodbunder Wildlife Corridor", district: "Thane" },
+  ];
+
+  const cleanInitialDistrict = (user?.district || "Mumbai Suburban").replace(/\s+District$/i, "").trim() || "Mumbai Suburban";
+  const [district, setDistrict] = useState(cleanInitialDistrict);
   const [assignedStation, setAssignedStation] = useState(
     user?.assigned_station || "Sanjay Gandhi National Park (SGNP) Range Office (Borivali East)"
   );
   const [badgeNumber, setBadgeNumber] = useState(user?.badge_number || "");
-  const [stations, setStations] = useState([]);
-  const [loadingStations, setLoadingStations] = useState(true);
+  const [stations, setStations] = useState(DEFAULT_STATIONS_FALLBACK);
+  const [loadingStations, setLoadingStations] = useState(false);
+  const [showOfficerStationEdit, setShowOfficerStationEdit] = useState(
+    !Boolean(user?.assigned_station)
+  );
 
   // Address & Location States
   const [address, setAddress] = useState(user?.address || user?.location_name || "");
@@ -98,16 +111,28 @@ export const ProfilePage = () => {
     const fetchStations = async () => {
       setLoadingStations(true);
       try {
-        const data = await apiService.getForestStations(district);
+        const cleanD = (district || "").replace(/\s+District$/i, "").trim() || "Mumbai Suburban";
+        let data = await apiService.getForestStations(cleanD);
+        if (!Array.isArray(data) || data.length === 0) {
+          data = await apiService.getForestStations("");
+        }
+        if (!Array.isArray(data) || data.length === 0) {
+          data = DEFAULT_STATIONS_FALLBACK.filter((s) =>
+            s.district.toLowerCase().includes(cleanD.toLowerCase()) || cleanD.toLowerCase().includes(s.district.toLowerCase())
+          );
+          if (data.length === 0) data = DEFAULT_STATIONS_FALLBACK;
+        }
+
         if (isMounted && Array.isArray(data) && data.length > 0) {
           setStations(data);
           const hasCurrent = data.some((s) => s.name === assignedStation);
-          if (!hasCurrent && isOfficer) {
+          if (!hasCurrent && isOfficer && data[0]?.name) {
             setAssignedStation(data[0].name);
           }
         }
       } catch (err) {
         console.warn("Could not fetch forest stations:", err);
+        if (isMounted) setStations(DEFAULT_STATIONS_FALLBACK);
       } finally {
         if (isMounted) setLoadingStations(false);
       }
@@ -439,12 +464,12 @@ export const ProfilePage = () => {
     };
 
     try {
-      await apiService.updateUserProfile(updatedProfile);
+      const res = await apiService.updateUserProfile(updatedProfile);
       updateUser(updatedProfile);
-      setMsg("Profile details and interactive location updated successfully!");
-    } catch {
-      updateUser(updatedProfile);
-      setMsg("Profile & address saved locally in session.");
+      setMsg(res?.message || "Profile details & interactive address saved to AWS (RDS & DynamoDB) successfully!");
+    } catch (err) {
+      console.error("Save profile error:", err);
+      setError(err?.message || "Failed to save profile to AWS database. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -576,116 +601,7 @@ export const ProfilePage = () => {
 
         {/* PERSONAL DETAILS & LOCATION FORM */}
         <form onSubmit={handleSaveProfile} style={{ display: "flex", flexDirection: "column", gap: "1.75rem" }}>
-          {/* OFFICER SPECIFIC FOREST STATION CARD */}
-          {isOfficer && (
-            <Card
-              title="Assigned Forest Range Station & Officer Credentials"
-              style={{
-                border: "1.5px solid rgba(52, 211, 153, 0.5)",
-                backgroundColor: "#F0FDF4",
-              }}
-            >
-              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-                {/* DISTRICT SELECTION */}
-                <div>
-                  <label
-                    htmlFor="officerDistrict"
-                    style={{
-                      fontWeight: 800,
-                      color: "#166534",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.375rem",
-                      margin: "0 0 0.25rem",
-                    }}
-                  >
-                    <Compass size={16} /> Operational District *
-                  </label>
-                  <p style={{ fontSize: "0.8125rem", color: "#15803D", margin: "0 0 0.625rem" }}>
-                    Select your operational jurisdiction district. Forest stations below will dynamically update.
-                  </p>
-                  <select
-                    id="officerDistrict"
-                    value={district}
-                    onChange={(e) => setDistrict(e.target.value)}
-                    style={{
-                      height: "44px",
-                      fontWeight: 700,
-                      borderRadius: "10px",
-                      border: "1.5px solid rgba(22, 101, 52, 0.4)",
-                      backgroundColor: "#FFFFFF",
-                      fontSize: "0.9375rem",
-                    }}
-                    required
-                  >
-                    {MUMBAI_DISTRICTS.map((d) => (
-                      <option key={d} value={d}>
-                        {d} District
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label
-                    htmlFor="assignedStation"
-                    style={{
-                      fontWeight: 800,
-                      color: "#166534",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.375rem",
-                      margin: "0 0 0.25rem",
-                    }}
-                  >
-                    <Compass size={16} /> Designated Forest Office / Station in {district} *
-                  </label>
-                  <p style={{ fontSize: "0.8125rem", color: "#15803D", margin: "0 0 0.625rem" }}>
-                    Select your official station from active database records. Incidents, citizen reports, and emergency dispatches tagged to this station will route to your command desk.
-                  </p>
-
-                  {loadingStations ? (
-                    <p style={{ fontSize: "0.8125rem", color: "var(--muted-text)" }}>Connecting to database stations...</p>
-                  ) : (
-                    <select
-                      id="assignedStation"
-                      value={assignedStation}
-                      onChange={(e) => setAssignedStation(e.target.value)}
-                      style={{
-                        height: "44px",
-                        fontWeight: 700,
-                        borderRadius: "10px",
-                        border: "1.5px solid rgba(22, 101, 52, 0.4)",
-                        backgroundColor: "#FFFFFF",
-                        fontSize: "0.9375rem",
-                      }}
-                      required
-                    >
-                      {stations.map((stn) => (
-                        <option key={stn.id || stn.name} value={stn.name}>
-                          {stn.name} ({stn.range})
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="badgeNumber" style={{ fontWeight: 700, color: "#166534" }}>
-                    Officer Badge ID / Patrol Call-Sign
-                  </label>
-                  <input
-                    id="badgeNumber"
-                    type="text"
-                    placeholder="e.g. KL-FR-RRT-01"
-                    value={badgeNumber}
-                    onChange={(e) => setBadgeNumber(e.target.value)}
-                    style={{ backgroundColor: "#FFFFFF" }}
-                  />
-                </div>
-              </div>
-            </Card>
-          )}
+          
 
           <Card title="Personal Information">
             <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
@@ -935,9 +851,179 @@ export const ProfilePage = () => {
                 />
               </div>
 
+{/* OFFICER SPECIFIC FOREST STATION CARD */}
+          {isOfficer && (
+            <Card
+              title="Assigned Forest Range Station & Officer Credentials"
+              style={{
+                border: "1.5px solid rgba(52, 211, 153, 0.5)",
+                backgroundColor: "#F0FDF4",
+              }}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+                {!showOfficerStationEdit && (assignedStation || user?.assigned_station) ? (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: "1rem",
+                      backgroundColor: "#FFFFFF",
+                      padding: "1rem 1.25rem",
+                      borderRadius: "12px",
+                      border: "1.5px solid #A7F3D0",
+                      boxShadow: "0 2px 8px rgba(16, 185, 129, 0.08)",
+                    }}
+                  >
+                    <div>
+                      <span style={{ fontSize: "0.75rem", textTransform: "uppercase", color: "#047857", fontWeight: 800, letterSpacing: "0.05em" }}>
+                        Active Wildlife Patrol Duty Post
+                      </span>
+                      <h4 style={{ margin: "0.25rem 0", color: "#065F46", fontSize: "1.0625rem", fontWeight: 800 }}>
+                        {assignedStation || user?.assigned_station}
+                      </h4>
+                      <p style={{ margin: 0, fontSize: "0.8125rem", color: "#047857" }}>
+                        Jurisdiction District: <strong>{district}</strong> {badgeNumber ? `| Call-Sign / Badge: ${badgeNumber}` : ""}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setShowOfficerStationEdit(true)}
+                      style={{
+                        borderColor: "#059669",
+                        color: "#065F46",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Change / Transfer Station
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <p style={{ fontSize: "0.8125rem", color: "#15803D", margin: 0 }}>
+                        Officer Duty Station Setup: Incidents and emergency dispatches tagged to this station will route to your command desk.
+                      </p>
+                      {user?.assigned_station && (
+                        <button
+                          type="button"
+                          onClick={() => setShowOfficerStationEdit(false)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: "#059669",
+                            fontSize: "0.75rem",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            textDecoration: "underline",
+                          }}
+                        >
+                          Keep Current Station
+                        </button>
+                      )}
+                    </div>
+
+                    {/* DISTRICT SELECTION */}
+                    <div>
+                      <label
+                        htmlFor="officerDistrict"
+                        style={{
+                          fontWeight: 800,
+                          color: "#166534",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.375rem",
+                          margin: "0 0 0.25rem",
+                        }}
+                      >
+                        <Compass size={16} /> Operational District
+                      </label>
+                      <select
+                        id="officerDistrict"
+                        value={district}
+                        onChange={(e) => setDistrict(e.target.value.replace(/\s+District$/i, "").trim())}
+                        style={{
+                          height: "44px",
+                          fontWeight: 700,
+                          borderRadius: "10px",
+                          border: "1.5px solid rgba(22, 101, 52, 0.4)",
+                          backgroundColor: "#FFFFFF",
+                          fontSize: "0.9375rem",
+                        }}
+                      >
+                        {MUMBAI_DISTRICTS.map((d) => (
+                          <option key={d} value={d}>
+                            {d}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label
+                        htmlFor="assignedStation"
+                        style={{
+                          fontWeight: 800,
+                          color: "#166534",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "0.375rem",
+                          margin: "0 0 0.25rem",
+                        }}
+                      >
+                        <Compass size={16} /> Designated Forest Office / Station in {district}
+                      </label>
+
+                      {loadingStations ? (
+                        <p style={{ fontSize: "0.8125rem", color: "var(--muted-text)" }}>Connecting to database stations...</p>
+                      ) : (
+                        <select
+                          id="assignedStation"
+                          value={assignedStation}
+                          onChange={(e) => setAssignedStation(e.target.value)}
+                          style={{
+                            height: "44px",
+                            fontWeight: 700,
+                            borderRadius: "10px",
+                            border: "1.5px solid rgba(22, 101, 52, 0.4)",
+                            backgroundColor: "#FFFFFF",
+                            fontSize: "0.9375rem",
+                          }}
+                        >
+                          {stations.map((stn) => (
+                            <option key={stn.id || stn.name} value={stn.name}>
+                              {stn.name} {stn.range ? `(${stn.range})` : ""}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+
+                    <div>
+                      <label htmlFor="badgeNumber" style={{ fontWeight: 700, color: "#166534" }}>
+                        Officer Badge ID / Patrol Call-Sign
+                      </label>
+                      <input
+                        id="badgeNumber"
+                        type="text"
+                        placeholder="e.g. KL-FR-RRT-01"
+                        value={badgeNumber}
+                        onChange={(e) => setBadgeNumber(e.target.value)}
+                        style={{ backgroundColor: "#FFFFFF" }}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+            </Card>
+          )}
+
               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "0.5rem" }}>
                 <Button type="submit" variant="primary" size="lg" loading={loading} icon={Save}>
-                  Save Address & Location Profile
+                  Save Profile & Address Settings
                 </Button>
               </div>
             </div>

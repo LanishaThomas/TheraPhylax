@@ -38,14 +38,21 @@ export const OfficerDashboardPage = () => {
     "Mumbai Suburban", "Mumbai City", "Thane", "Navi Mumbai", "Palghar", "Raigad"
   ];
 
-  const defaultDistrict = user?.district || "Mumbai Suburban";
+  const DEFAULT_OFFICER_STATIONS = [
+    { id: "fs-1", name: "Sanjay Gandhi National Park (SGNP) Range Office (Borivali East)", range: "SGNP Core Wildlife Range", district: "Mumbai Suburban" },
+    { id: "fs-2", name: "Aarey Milk Colony Wildlife Leopard Rescue & Transit Post (Goregaon)", range: "Aarey Forest & Wildlife Transit Range", district: "Mumbai Suburban" },
+    { id: "fs-3", name: "Tulsi & Vihar Lake Catchment Protection Post (Mulund / Powai)", range: "Eastern Water Catchment Range", district: "Mumbai Suburban" },
+    { id: "fs-4", name: "Mumbai Mangrove Conservation Cell & Marine Rescue Post (Bandra / Versova)", range: "Coastal Mangrove Range", district: "Mumbai Suburban" },
+  ];
+
+  const defaultDistrict = (user?.district || "Mumbai Suburban").replace(/\s+District$/i, "").trim();
   const defaultOfficerStation =
     user?.assigned_station || "Sanjay Gandhi National Park (SGNP) Range Office (Borivali East)";
 
   const [selectedDistrict, setSelectedDistrict] = useState(defaultDistrict);
   const [districtsList, setDistrictsList] = useState(MUMBAI_DISTRICTS);
   const [selectedStation, setSelectedStation] = useState(defaultOfficerStation);
-  const [availableStations, setAvailableStations] = useState([]);
+  const [availableStations, setAvailableStations] = useState(DEFAULT_OFFICER_STATIONS);
 
   // Reports state
   const [reports, setReports] = useState([]);
@@ -56,33 +63,63 @@ export const OfficerDashboardPage = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [actionSuccess, setActionSuccess] = useState("");
 
+  const isStationMatch = (stationName, target) => {
+    if (!stationName || !target) return false;
+    const s1 = stationName.toLowerCase().trim();
+    const s2 = target.toLowerCase().trim();
+    return s1.includes(s2) || s2.includes(s1);
+  };
+
   const loadData = async (targetDistrict = selectedDistrict) => {
     setLoading(true);
     setError("");
+    const cleanDistrict = (targetDistrict || selectedDistrict || "Mumbai Suburban").replace(/\s+District$/i, "").trim();
+
     try {
-      const [reportsData, stationsData, remoteDistricts] = await Promise.all([
+      const results = await Promise.allSettled([
         apiService.getReports(),
-        apiService.getForestStations(targetDistrict),
-        apiService.getForestDistricts().catch(() => MUMBAI_DISTRICTS),
+        apiService.getForestStations(cleanDistrict),
+        apiService.getForestDistricts(),
       ]);
 
-      setReports(Array.isArray(reportsData) ? reportsData : []);
+      const reportsData = results[0].status === "fulfilled" && Array.isArray(results[0].value) ? results[0].value : [];
+      let stationsData = results[1].status === "fulfilled" && Array.isArray(results[1].value) ? results[1].value : [];
+      const remoteDistricts = results[2].status === "fulfilled" && Array.isArray(results[2].value) ? results[2].value : MUMBAI_DISTRICTS;
+
+      if (stationsData.length === 0) {
+        try {
+          const allStns = await apiService.getForestStations("");
+          if (Array.isArray(allStns) && allStns.length > 0) {
+            stationsData = allStns;
+          }
+        } catch {}
+      }
+
+      if (stationsData.length === 0) {
+        stationsData = DEFAULT_OFFICER_STATIONS;
+      }
+
+      setReports(reportsData);
       if (Array.isArray(remoteDistricts) && remoteDistricts.length > 0) {
         setDistrictsList(remoteDistricts);
       }
-      if (Array.isArray(stationsData) && stationsData.length > 0) {
-        setAvailableStations(stationsData);
-        // If current station isn't in this district's stations, switch to the first
-        const hasCurrent = stationsData.some(
-          (s) => s.name.toLowerCase() === selectedStation.toLowerCase()
-        );
-        if (!hasCurrent) {
-          setSelectedStation(stationsData[0].name);
-        }
+      setAvailableStations(stationsData);
+
+      const hasCurrent = stationsData.some(
+        (s) => isStationMatch(s.name, selectedStation)
+      );
+      if (!hasCurrent && stationsData.length > 0) {
+        setSelectedStation(stationsData[0].name);
+      }
+
+      if (results[0].status === "rejected" && reportsData.length === 0) {
+        setError("Note: Remote sync pending; displaying cached incident reports.");
       }
     } catch (err) {
       console.error("Error loading officer data:", err);
-      setError("Failed to sync live reports from database. Showing cached records.");
+      if (reports.length === 0) {
+        setError("Failed to sync live reports from database. Showing cached records.");
+      }
     } finally {
       setLoading(false);
     }
@@ -94,8 +131,9 @@ export const OfficerDashboardPage = () => {
 
   // Update district and station if user profile updates
   useEffect(() => {
-    if (user?.district && user.district !== selectedDistrict) {
-      setSelectedDistrict(user.district);
+    if (user?.district) {
+      const clean = user.district.replace(/\s+District$/i, "").trim();
+      if (clean !== selectedDistrict) setSelectedDistrict(clean);
     }
     if (user?.assigned_station) {
       setSelectedStation(user.assigned_station);
@@ -104,7 +142,8 @@ export const OfficerDashboardPage = () => {
 
   // Handle manual district change from dropdown
   const handleDistrictChange = (newDistrict) => {
-    setSelectedDistrict(newDistrict);
+    const clean = newDistrict.replace(/\s+District$/i, "").trim();
+    setSelectedDistrict(clean);
   };
 
   // Filter reports
@@ -286,11 +325,14 @@ export const OfficerDashboardPage = () => {
                     cursor: "pointer",
                   }}
                 >
-                  {districtsList.map((d) => (
-                    <option key={d} value={d} style={{ color: "#000000" }}>
-                      {d} District
-                    </option>
-                  ))}
+                  {districtsList.map((d) => {
+                    const clean = d.replace(/\s+District$/i, "").trim();
+                    return (
+                      <option key={clean} value={clean} style={{ color: "#000000" }}>
+                        {clean} District
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
 
@@ -400,7 +442,7 @@ export const OfficerDashboardPage = () => {
                 reports.filter(
                   (r) =>
                     r.status !== "Resolved" &&
-                    r.tagged_forest_officers?.some((o) => o.includes(selectedStation))
+                    r.tagged_forest_officers?.some((o) => isStationMatch(o, selectedStation))
                 ).length
               }{" "}
               Active
@@ -415,8 +457,8 @@ export const OfficerDashboardPage = () => {
               {
                 reports.filter(
                   (r) =>
-                    (r.severity === "High" || r.severity === "Critical") &&
-                    r.tagged_forest_officers?.some((o) => o.includes(selectedStation))
+                    ((r.severity || "").toLowerCase() === "high" || (r.severity || "").toLowerCase() === "critical") &&
+                    r.tagged_forest_officers?.some((o) => isStationMatch(o, selectedStation))
                 ).length
               }{" "}
               Urgent
